@@ -12,7 +12,7 @@ def get_llm_provider(provider_name: str = None) -> BaseLLMProvider:
     if name == 'gemini':
         return GeminiProvider(
             api_key=getattr(settings, 'GEMINI_API_KEY', ''),
-            model_name=getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash'),
+            model_name=getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash'),
             max_retries=getattr(settings, 'GEMINI_MAX_RETRIES', 3),
             timeout=getattr(settings, 'GEMINI_TIMEOUT_SECONDS', 60)
         )

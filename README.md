@@ -14,7 +14,7 @@ Unlike generic resume polishers, this application bridges technology gaps using 
    - **Complete Career Profile**: Comprehensive database maintaining all past projects, technologies, and achievements that might not fit on a single resume.
 2. **Provider-Agnostic LLM Architecture (`backend/services/llm/`)**:
    - Clean abstraction layer decoupling business logic from model vendors.
-   - Google Gemini provider (`gemini-1.5-flash` / `gemini-1.5-pro`) with structured JSON schema validation (Pydantic), exponential backoff retries, and rate-limit handling.
+   - Google Gemini provider (`gemini-2.5-flash` / `gemini-2.5-pro`) with structured JSON schema validation (Pydantic), exponential backoff retries, and rate-limit handling.
 3. **Dynamic Experience-Level Prompt Engineering (`backend/prompts/`)**:
    - Adapts resume generation strategy dynamically according to the candidate's professional level:
      - **Fresher / No Internship**: Focuses on CS fundamentals, academic capstones, and open source work without fabricating phantom senior roles.
@@ -118,7 +118,7 @@ AI-POWERED-JD-BASED-RESUME-GENERATOR/
    Add your Google Gemini API key:
    ```ini
    GEMINI_API_KEY=your_actual_gemini_api_key_here
-   GEMINI_MODEL=gemini-1.5-flash
+   GEMINI_MODEL=gemini-2.5-flash
    USE_SQLITE=True
    ```
    *(Note: `USE_SQLITE=True` is enabled by default for zero-setup local execution. Set `USE_SQLITE=False` and run `docker compose up -d` to use PostgreSQL).*

@@ -25,7 +25,15 @@ class GeminiProvider(BaseLLMProvider):
         timeout: Optional[int] = None
     ):
         self.api_key = api_key or getattr(settings, 'GEMINI_API_KEY', '')
-        self.model_name = model_name or getattr(settings, 'GEMINI_MODEL', 'gemini-1.5-flash')
+        raw_model = model_name or getattr(settings, 'GEMINI_MODEL', 'gemini-2.5-flash')
+        deprecated_map = {
+            'gemini-1.5-flash': 'gemini-2.5-flash',
+            'models/gemini-1.5-flash': 'gemini-2.5-flash',
+            'gemini-1.5-pro': 'gemini-2.5-pro',
+            'models/gemini-1.5-pro': 'gemini-2.5-pro',
+            'gemini-1.0-pro': 'gemini-2.5-flash',
+        }
+        self.model_name = deprecated_map.get(raw_model, raw_model)
         self.max_retries = max_retries or getattr(settings, 'GEMINI_MAX_RETRIES', 3)
         self.timeout = timeout or getattr(settings, 'GEMINI_TIMEOUT_SECONDS', 60)
         self._client_initialized = False
@@ -118,7 +126,16 @@ class GeminiProvider(BaseLLMProvider):
             except Exception as e:
                 err_str = str(e).lower()
                 last_error = e
-                if 'quota' in err_str or 'rate' in err_str or '429' in err_str or 'exhausted' in err_str:
+                if ('not found' in err_str or '404' in err_str) and self.model_name != 'gemini-2.5-flash':
+                    logger.warning(f"Gemini model '{self.model_name}' not found or not supported. Falling back to 'gemini-2.5-flash'.")
+                    self.model_name = 'gemini-2.5-flash'
+                    model = genai.GenerativeModel(
+                        model_name=self.model_name,
+                        system_instruction=system_instruction or None,
+                        generation_config=generation_config
+                    )
+                    continue
+                elif 'quota' in err_str or 'rate' in err_str or '429' in err_str or 'exhausted' in err_str:
                     sleep_time = (2 ** attempt) + 1
                     logger.warning(f"Gemini rate limit hit. Sleeping {sleep_time}s before retry...")
                     time.sleep(sleep_time)

@@ -17,6 +17,7 @@ from apps.pdf_engine.ats_generator import generate_ats_pdf, normalize_filename
 
 from services.llm.factory import get_llm_provider
 from services.matching.score_calculator import calculate_jd_match_scores
+from services.matching.jd_extractor import extract_dynamic_jd_analysis
 from services.diff.resume_differ import compute_structured_diff
 
 from prompts.jd_analysis import get_jd_analysis_system_instruction, build_jd_analysis_prompt
@@ -123,13 +124,8 @@ class AnalyzeAndGenerateView(APIView):
                 jd_obj.save()
             except Exception as e:
                 logger.error(f"Error during JD analysis: {str(e)}")
-                # Use fallback dictionary
-                jd_analysis = {
-                    "target_role": target_role,
-                    "mandatory_skills": [target_role, "Backend Development", "REST APIs"],
-                    "preferred_skills": ["Cloud", "Databases"],
-                    "important_ats_keywords": [target_role, "Software Engineering"]
-                }
+                # Use dynamic extractor fallback from actual JD text
+                jd_analysis = extract_dynamic_jd_analysis(jd_obj.raw_text, target_role, target_company)
 
         # Step B: Generate Role-Specific Resume (v1)
         gen_prompt = build_resume_generation_prompt(

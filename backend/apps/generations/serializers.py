@@ -49,13 +49,47 @@ class ResumeGenerationSerializer(serializers.ModelSerializer):
 
 
 class AnalyzeAndGenerateRequestSerializer(serializers.Serializer):
-    job_description_id = serializers.IntegerField(required=False)
+    job_description_id = serializers.IntegerField(required=False, allow_null=True)
     job_description_text = serializers.CharField(required=False, allow_blank=True)
     target_role = serializers.CharField(required=False, allow_blank=True)
     target_company = serializers.CharField(required=False, allow_blank=True)
     reference_resume_id = serializers.IntegerField(required=False, allow_null=True)
     experience_level = serializers.ChoiceField(choices=ExperienceLevel.choices, default=ExperienceLevel.FRESHER)
     additional_experience_details = serializers.CharField(required=False, allow_blank=True)
+
+    def to_internal_value(self, data):
+        # Allow flexible field naming from request body
+        mutable = data.copy() if hasattr(data, 'copy') else dict(data)
+        
+        # Target Role aliases
+        if 'target_role' not in mutable:
+            for alias in ['role', 'job_role', 'designation', 'target_designation', 'title']:
+                if alias in mutable and mutable[alias]:
+                    mutable['target_role'] = mutable[alias]
+                    break
+
+        # Company aliases
+        if 'target_company' not in mutable:
+            for alias in ['company', 'company_name', 'target_company_name']:
+                if alias in mutable and mutable[alias]:
+                    mutable['target_company'] = mutable[alias]
+                    break
+
+        # Job Description aliases
+        if 'job_description_text' not in mutable:
+            for alias in ['job_description', 'jd', 'jd_text', 'description', 'raw_text']:
+                if alias in mutable and mutable[alias]:
+                    mutable['job_description_text'] = mutable[alias]
+                    break
+
+        # Additional details aliases
+        if 'additional_experience_details' not in mutable:
+            for alias in ['additional_details', 'experience_details', 'notes']:
+                if alias in mutable and mutable[alias]:
+                    mutable['additional_experience_details'] = mutable[alias]
+                    break
+
+        return super().to_internal_value(mutable)
 
 
 class ReviseRequestSerializer(serializers.Serializer):

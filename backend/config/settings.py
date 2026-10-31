@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from .env
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env', override=True)
 
 # Quick-start development settings - unsuitable for production
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-ai-resume-generator-secret-key-change-in-production-2026')
@@ -150,6 +150,7 @@ CORS_ALLOW_CREDENTIALS = True
 # LLM & Gemini Configuration (Provider-Independent Backend Service)
 LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-1.5-flash')
+_raw_model = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+GEMINI_MODEL = 'gemini-2.5-flash' if _raw_model in ('gemini-1.5-flash', 'models/gemini-1.5-flash', 'gemini-1.0-pro') else _raw_model
 GEMINI_MAX_RETRIES = int(os.getenv('GEMINI_MAX_RETRIES', '3'))
 GEMINI_TIMEOUT_SECONDS = int(os.getenv('GEMINI_TIMEOUT_SECONDS', '60'))
