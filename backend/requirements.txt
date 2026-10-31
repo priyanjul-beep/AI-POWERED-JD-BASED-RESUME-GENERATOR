@@ -1,0 +1,15 @@
+Django>=5.0,<5.2
+djangorestframework>=3.15.0
+django-cors-headers>=4.3.0
+djangorestframework-simplejwt>=5.3.0
+psycopg[binary]>=3.1.18
+dj-database-url>=2.1.0
+python-dotenv>=1.0.1
+google-generativeai>=0.8.0
+pydantic>=2.7.0
+reportlab>=4.2.0
+pypdf>=4.2.0
+python-docx>=1.1.0
+pytest>=8.0.0
+pytest-django>=4.8.0
+requests>=2.31.0

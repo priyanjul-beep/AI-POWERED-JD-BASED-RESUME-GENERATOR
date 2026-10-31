@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: resume_gen_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: resume_gen_db
+      POSTGRES_USER: resume_user
+      POSTGRES_PASSWORD: resume_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
