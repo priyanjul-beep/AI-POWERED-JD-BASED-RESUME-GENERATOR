@@ -56,6 +56,10 @@ export default function GenerateResumePage() {
   const [experienceLevel, setExperienceLevel] = useState('INTERNSHIP');
   const [additionalDetails, setAdditionalDetails] = useState('');
 
+  // Drag & drop visual state
+  const [isJdDragging, setIsJdDragging] = useState(false);
+  const [isResumeDragging, setIsResumeDragging] = useState(false);
+
   // Status & Feedback States
   const [submitting, setSubmitting] = useState(false);
   const [isUploadPhase, setIsUploadPhase] = useState(false);

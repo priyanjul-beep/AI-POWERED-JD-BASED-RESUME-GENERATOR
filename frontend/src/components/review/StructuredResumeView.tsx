@@ -29,6 +29,8 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
   const [activeTab, setActiveTab] = useState<'preview' | 'audit' | 'proposed'>('preview');
 
   const proposedItems: ProposedContentItem[] = resume.proposed_content || [];
+  const workExperiences = resume.work_experience || (resume as any).experiences || (resume as any).experience || [];
+  const projectsList = resume.projects || (resume as any).key_projects || [];
 
   // Map of text snippets to change detail for inline visual cueing
   const changeMap = new Map<string, ChangeDetail>();
@@ -192,13 +194,13 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
           )}
 
           {/* Work Experience */}
-          {resume.work_experience && resume.work_experience.length > 0 && (
+          {workExperiences.length > 0 && (
             <section className="space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Work Experience
               </h3>
               <div className="space-y-4">
-                {resume.work_experience.map((exp, idx) => (
+                {workExperiences.map((exp, idx) => (
                   <div key={idx} className="space-y-1.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="text-sm font-bold text-white">
@@ -231,13 +233,13 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
           )}
 
           {/* Key Projects */}
-          {resume.projects && resume.projects.length > 0 && (
+          {projectsList.length > 0 && (
             <section className="space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Key Projects
               </h3>
               <div className="space-y-4">
-                {resume.projects.map((proj, idx) => (
+                {projectsList.map((proj, idx) => (
                   <div key={idx} className="space-y-1.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="text-sm font-bold text-white flex items-center gap-1.5">

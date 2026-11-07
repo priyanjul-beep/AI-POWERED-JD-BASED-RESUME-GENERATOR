@@ -39,7 +39,8 @@ PROTECTED_CERTIFICATION_FIELDS = ["name", "issuing_organization", "issue_date", 
 
 def build_baseline_from_profile_and_resume(
     profile_data: Optional[Dict[str, Any]] = None,
-    reference_resume_data: Optional[Dict[str, Any]] = None
+    reference_resume_data: Optional[Dict[str, Any]] = None,
+    reference_resume_text: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Constructs a normalized baseline structural identity dictionary from
@@ -213,7 +214,8 @@ def _clean_str(val: Any) -> str:
 
 def enforce_structural_identity(
     baseline: Dict[str, Any],
-    generated_resume: Dict[str, Any]
+    generated_resume: Dict[str, Any],
+    reference_resume_text: str = ""
 ) -> Dict[str, Any]:
     """
     Enforces the candidate's baseline structural identity onto the generated resume.
@@ -264,21 +266,49 @@ def enforce_structural_identity(
     base_experiences = baseline.get("work_experience") or []
     gen_experiences = sanitized.get("work_experience") or []
     sanitized_experiences = []
+    ref_lower = (reference_resume_text or "").lower()
 
     if not base_experiences:
-        # Candidate has NO work experience / internship in baseline (e.g. Fresher)
-        # Any generated experience is a hallucination / fictional employer.
-        for phantom_exp in gen_experiences:
-            bullets = phantom_exp.get("bullet_points") or []
-            for b in bullets:
-                sanitized["proposed_content"].append({
-                    "target_section": "Work Experience",
-                    "proposed_text": b,
-                    "targeted_jd_requirement": phantom_exp.get("title") or "Work Experience",
-                    "reason": f"Proposed responsibility bullet for target role (not verified in profile history).",
-                    "requires_user_confirmation": True
-                })
-        sanitized["work_experience"] = []
+        if ref_lower:
+            # Check if generated experiences are substantiated by reference resume text
+            for gen_exp in gen_experiences:
+                gen_co = _clean_str(gen_exp.get("company"))
+                gen_ti = _clean_str(gen_exp.get("title"))
+                co_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_co) if len(w) > 3]
+                ti_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_ti) if len(w) > 3]
+                is_substantiated = (
+                    (gen_co and gen_co in ref_lower) or
+                    (gen_ti and gen_ti in ref_lower) or
+                    (co_words and any(w in ref_lower for w in co_words)) or
+                    (ti_words and any(w in ref_lower for w in ti_words))
+                )
+                if is_substantiated:
+                    sanitized_experiences.append(gen_exp)
+                else:
+                    bullets = gen_exp.get("bullet_points") or []
+                    for b in bullets:
+                        sanitized["proposed_content"].append({
+                            "target_section": "Work Experience",
+                            "proposed_text": b,
+                            "targeted_jd_requirement": gen_exp.get("title") or "Work Experience",
+                            "reason": f"Proposed responsibility bullet for target role (not verified in profile history).",
+                            "requires_user_confirmation": True
+                        })
+            sanitized["work_experience"] = sanitized_experiences
+        else:
+            # Candidate has NO work experience / internship in baseline (e.g. Fresher)
+            # Any generated experience is a hallucination / fictional employer.
+            for phantom_exp in gen_experiences:
+                bullets = phantom_exp.get("bullet_points") or []
+                for b in bullets:
+                    sanitized["proposed_content"].append({
+                        "target_section": "Work Experience",
+                        "proposed_text": b,
+                        "targeted_jd_requirement": phantom_exp.get("title") or "Work Experience",
+                        "reason": f"Proposed responsibility bullet for target role (not verified in profile history).",
+                        "requires_user_confirmation": True
+                    })
+            sanitized["work_experience"] = []
     else:
         # Align generated experiences with baseline experiences
         # Match by company name or index
@@ -329,18 +359,33 @@ def enforce_structural_identity(
                 # Omitted baseline item; restore fully
                 sanitized_experiences.append(copy.deepcopy(base_exp))
 
-        # Check for extra hallucinated experiences beyond baseline count
+        # Check for extra experiences beyond baseline count
         for g_idx, gen_exp in enumerate(gen_experiences):
             if g_idx not in used_gen_indices:
-                bullets = gen_exp.get("bullet_points") or []
-                for b in bullets:
-                    sanitized["proposed_content"].append({
-                        "target_section": "Work Experience",
-                        "proposed_text": b,
-                        "targeted_jd_requirement": gen_exp.get("title") or "Work Experience",
-                        "reason": f"Proposed role-specific bullet from {gen_exp.get('company', 'suggested experience')}.",
-                        "requires_user_confirmation": True
-                    })
+                gen_co = _clean_str(gen_exp.get("company"))
+                gen_ti = _clean_str(gen_exp.get("title"))
+                co_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_co) if len(w) > 3]
+                ti_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_ti) if len(w) > 3]
+                is_substantiated = (
+                    ref_lower and (
+                        (gen_co and gen_co in ref_lower) or
+                        (gen_ti and gen_ti in ref_lower) or
+                        (co_words and any(w in ref_lower for w in co_words)) or
+                        (ti_words and any(w in ref_lower for w in ti_words))
+                    )
+                )
+                if is_substantiated:
+                    sanitized_experiences.append(gen_exp)
+                else:
+                    bullets = gen_exp.get("bullet_points") or []
+                    for b in bullets:
+                        sanitized["proposed_content"].append({
+                            "target_section": "Work Experience",
+                            "proposed_text": b,
+                            "targeted_jd_requirement": gen_exp.get("title") or "Work Experience",
+                            "reason": f"Proposed role-specific bullet from {gen_exp.get('company', 'suggested experience')}.",
+                            "requires_user_confirmation": True
+                        })
 
         sanitized["work_experience"] = sanitized_experiences
 
@@ -350,19 +395,43 @@ def enforce_structural_identity(
     sanitized_projects = []
 
     if not base_projects:
-        for phantom_proj in gen_projects:
-            highlights = phantom_proj.get("highlights") or []
-            desc = phantom_proj.get("description")
-            items = ([desc] if desc else []) + highlights
-            for h in items:
-                sanitized["proposed_content"].append({
-                    "target_section": "Projects",
-                    "proposed_text": h,
-                    "targeted_jd_requirement": phantom_proj.get("title") or "Project Engineering",
-                    "reason": f"Suggested project implementation bullet requiring candidate confirmation.",
-                    "requires_user_confirmation": True
-                })
-        sanitized["projects"] = []
+        if ref_lower:
+            for gen_proj in gen_projects:
+                gen_title = _clean_str(gen_proj.get("title"))
+                proj_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_title) if len(w) > 3]
+                is_substantiated = (
+                    (gen_title and gen_title in ref_lower) or
+                    (proj_words and any(w in ref_lower for w in proj_words))
+                )
+                if is_substantiated:
+                    sanitized_projects.append(gen_proj)
+                else:
+                    highlights = gen_proj.get("highlights") or []
+                    desc = gen_proj.get("description")
+                    items = ([desc] if desc else []) + highlights
+                    for h in items:
+                        sanitized["proposed_content"].append({
+                            "target_section": "Projects",
+                            "proposed_text": h,
+                            "targeted_jd_requirement": gen_proj.get("title") or "Project Engineering",
+                            "reason": f"Suggested project implementation bullet requiring candidate confirmation.",
+                            "requires_user_confirmation": True
+                        })
+            sanitized["projects"] = sanitized_projects
+        else:
+            for phantom_proj in gen_projects:
+                highlights = phantom_proj.get("highlights") or []
+                desc = phantom_proj.get("description")
+                items = ([desc] if desc else []) + highlights
+                for h in items:
+                    sanitized["proposed_content"].append({
+                        "target_section": "Projects",
+                        "proposed_text": h,
+                        "targeted_jd_requirement": phantom_proj.get("title") or "Project Engineering",
+                        "reason": f"Suggested project implementation bullet requiring candidate confirmation.",
+                        "requires_user_confirmation": True
+                    })
+            sanitized["projects"] = []
     else:
         used_proj_indices = set()
         for idx, base_proj in enumerate(base_projects):
@@ -397,20 +466,31 @@ def enforce_structural_identity(
             else:
                 sanitized_projects.append(copy.deepcopy(base_proj))
 
-        # Check for extra hallucinated projects
+        # Check for extra projects beyond baseline count
         for g_idx, gen_proj in enumerate(gen_projects):
             if g_idx not in used_proj_indices:
-                highlights = gen_proj.get("highlights") or []
-                desc = gen_proj.get("description")
-                items = ([desc] if desc else []) + highlights
-                for h in items:
-                    sanitized["proposed_content"].append({
-                        "target_section": "Projects",
-                        "proposed_text": h,
-                        "targeted_jd_requirement": gen_proj.get("title") or "Suggested Project",
-                        "reason": f"Suggested implementation bullet for target JD (not in candidate projects).",
-                        "requires_user_confirmation": True
-                    })
+                gen_title = _clean_str(gen_proj.get("title"))
+                proj_words = [w for w in re.split(r'[^a-zA-Z0-9]+', gen_title) if len(w) > 3]
+                is_substantiated = (
+                    ref_lower and (
+                        (gen_title and gen_title in ref_lower) or
+                        (proj_words and any(w in ref_lower for w in proj_words))
+                    )
+                )
+                if is_substantiated:
+                    sanitized_projects.append(gen_proj)
+                else:
+                    highlights = gen_proj.get("highlights") or []
+                    desc = gen_proj.get("description")
+                    items = ([desc] if desc else []) + highlights
+                    for h in items:
+                        sanitized["proposed_content"].append({
+                            "target_section": "Projects",
+                            "proposed_text": h,
+                            "targeted_jd_requirement": gen_proj.get("title") or "Suggested Project",
+                            "reason": f"Suggested implementation bullet for target JD (not in candidate projects).",
+                            "requires_user_confirmation": True
+                        })
 
         sanitized["projects"] = sanitized_projects
 

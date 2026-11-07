@@ -171,9 +171,27 @@ class AnalyzeAndGenerateView(APIView):
         # STRICT STRUCTURAL INVARIANT ENFORCEMENT
         baseline_data = build_baseline_from_profile_and_resume(
             profile_data=profile_data,
-            reference_resume_data=getattr(ref_obj, 'parsed_data', None)
+            reference_resume_data=getattr(ref_obj, 'parsed_data', None),
+            reference_resume_text=ref_text
         )
-        resume_data = enforce_structural_identity(baseline_data, resume_data)
+        resume_data = enforce_structural_identity(
+            baseline_data, 
+            resume_data,
+            reference_resume_text=ref_text
+        )
+
+        # Cache substantiated reference resume sections if parsed_data was empty
+        if ref_obj and (not ref_obj.parsed_data or not ref_obj.parsed_data.get('work_experience')):
+            ref_obj.parsed_data = {
+                'header': resume_data.get('header', {}),
+                'summary': resume_data.get('summary', ''),
+                'skills': resume_data.get('skills', {}),
+                'work_experience': resume_data.get('work_experience', []),
+                'projects': resume_data.get('projects', []),
+                'education': resume_data.get('education', []),
+                'certifications': resume_data.get('certifications', [])
+            }
+            ref_obj.save(update_fields=['parsed_data'])
 
         if not resume_data.get('requirement_mappings'):
             resume_data['requirement_mappings'] = requirement_mappings
@@ -292,11 +310,17 @@ class ResumeReviseView(APIView):
             return Response({'error': f"Revision failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # STRICT STRUCTURAL INVARIANT ENFORCEMENT ON REVISION
+        ref_text = generation.reference_resume.raw_text if generation.reference_resume else ""
         baseline_data = build_baseline_from_profile_and_resume(
             profile_data=profile_data,
-            reference_resume_data=current_version.structured_resume_data
+            reference_resume_data=current_version.structured_resume_data,
+            reference_resume_text=ref_text
         )
-        revised_data = enforce_structural_identity(baseline_data, revised_data)
+        revised_data = enforce_structural_identity(
+            baseline_data, 
+            revised_data,
+            reference_resume_text=ref_text
+        )
 
         # Compute updated match scores & diffs against previous version
         scores = calculate_jd_match_scores(jd_analysis, revised_data)
@@ -379,11 +403,17 @@ class ResumeApproveView(APIView):
 
             # Establish candidate baseline for strict structural preservation
             profile_data = _serialize_profile_for_llm(request.user)
+            ref_text = generation.reference_resume.raw_text if generation.reference_resume else ""
             baseline_data = build_baseline_from_profile_and_resume(
                 profile_data=profile_data,
-                reference_resume_data=current_version.structured_resume_data
+                reference_resume_data=current_version.structured_resume_data,
+                reference_resume_text=ref_text
             )
-            final_resume_data = enforce_structural_identity(baseline_data, current_version.structured_resume_data)
+            final_resume_data = enforce_structural_identity(
+                baseline_data, 
+                current_version.structured_resume_data,
+                reference_resume_text=ref_text
+            )
             target_approved_version = current_version
 
             # If user supplied a final instruction with YES, apply it before finalizing
@@ -412,7 +442,11 @@ class ResumeApproveView(APIView):
                     )
 
                 # STRICT STRUCTURAL INVARIANT ENFORCEMENT ON FINAL REVISION
-                revised_resume_data = enforce_structural_identity(baseline_data, revised_resume_data)
+                revised_resume_data = enforce_structural_identity(
+                    baseline_data, 
+                    revised_resume_data,
+                    reference_resume_text=ref_text
+                )
 
                 # Create an approved snapshot version
                 new_version_num = generation.current_version_number + 1
@@ -477,7 +511,11 @@ class ResumeApproveView(APIView):
                 )
 
             # Guarantee structural integrity before PDF generation
-            final_resume_data = enforce_structural_identity(baseline_data, final_resume_data)
+            final_resume_data = enforce_structural_identity(
+                baseline_data, 
+                final_resume_data,
+                reference_resume_text=ref_text
+            )
 
             # Generate ATS PDF
             try:
