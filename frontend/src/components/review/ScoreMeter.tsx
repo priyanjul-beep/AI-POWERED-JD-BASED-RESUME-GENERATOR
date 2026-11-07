@@ -295,7 +295,6 @@ export default function ScoreMeter({ report, compact = false }: ScoreMeterProps)
           )}
         </div>
       )}
-      
     </div>
   );
 }
