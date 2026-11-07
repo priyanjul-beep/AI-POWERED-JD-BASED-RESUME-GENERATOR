@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field
 
 class ChangeDetail(BaseModel):
@@ -60,6 +60,30 @@ class CertificationItem(BaseModel):
     issue_date: Optional[str] = ""
     credential_id: Optional[str] = ""
 
+class RequirementMappingItem(BaseModel):
+    requirement_name: str
+    category: str = "General"
+    classification: str = "MANDATORY"
+    candidate_evidence: str = ""
+    evidence_source: str = ""
+    status: str = "VERIFIED"  # VERIFIED, TRANSFERABLE, USER_CONFIRMATION_REQUIRED, UNSUPPORTED, PROPOSED
+    recommended_action: str = ""
+
+class ProposedContentItem(BaseModel):
+    target_section: str = "Work Experience"
+    proposed_text: str
+    targeted_jd_requirement: str
+    reason: str
+    requires_user_confirmation: bool = True
+
+class EvidenceGapDetail(BaseModel):
+    requirement: str
+    reason_missing: str = "Evidence not found in candidate profile or reference resume."
+    transferable_evidence: Optional[str] = ""
+    suggested_user_input: Optional[str] = ""
+    industry_pattern: Optional[str] = ""
+    requires_confirmation: bool = True
+
 class StructuredResumeSchema(BaseModel):
     header: ResumeHeader
     summary: str
@@ -69,7 +93,9 @@ class StructuredResumeSchema(BaseModel):
     education: List[EducationItem] = Field(default_factory=list)
     certifications: List[CertificationItem] = Field(default_factory=list)
     changes_applied: List[ChangeDetail] = Field(default_factory=list)
-    evidence_gaps: List[str] = Field(default_factory=list, description="JD requirements without verified supporting evidence")
+    evidence_gaps: List[Union[EvidenceGapDetail, str]] = Field(default_factory=list, description="JD requirements without verified supporting evidence")
+    requirement_mappings: Optional[List[RequirementMappingItem]] = Field(default_factory=list)
+    proposed_content: Optional[List[ProposedContentItem]] = Field(default_factory=list)
 
 class JDAnalysisSchema(BaseModel):
     target_role: str

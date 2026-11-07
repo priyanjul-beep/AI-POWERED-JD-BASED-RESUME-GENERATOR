@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { StructuredResumeData, ChangeDetail } from '@/lib/types';
+import { StructuredResumeData, ChangeDetail, ProposedContentItem } from '@/lib/types';
 import { 
   Building2, 
   Calendar, 
@@ -13,7 +13,11 @@ import {
   HelpCircle,
   ExternalLink,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Lightbulb,
+  AlertCircle,
+  ShieldCheck,
+  Check
 } from 'lucide-react';
 
 interface StructuredResumeViewProps {
@@ -22,7 +26,9 @@ interface StructuredResumeViewProps {
 }
 
 export default function StructuredResumeView({ resume, changes = [] }: StructuredResumeViewProps) {
-  const [activeTab, setActiveTab] = useState<'preview' | 'audit'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'audit' | 'proposed'>('preview');
+
+  const proposedItems: ProposedContentItem[] = resume.proposed_content || [];
 
   // Map of text snippets to change detail for inline visual cueing
   const changeMap = new Map<string, ChangeDetail>();
@@ -39,20 +45,21 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
     if (match.change_type === 'ADDED') return 'bg-emerald-500/15 border-l-2 border-emerald-500 pl-2 text-emerald-100';
     if (match.change_type === 'MODIFIED') return 'bg-amber-500/15 border-l-2 border-amber-500 pl-2 text-amber-100';
     if (match.change_type === 'REMOVED') return 'bg-rose-500/15 border-l-2 border-rose-500 pl-2 text-rose-100 line-through';
+    if (match.change_type === 'PROPOSED') return 'bg-purple-500/15 border-l-2 border-purple-500 pl-2 text-purple-100';
     return '';
   };
 
   return (
     <div className="rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden">
       {/* Top Header / View Toggle */}
-      <div className="bg-slate-950/80 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+      <div className="bg-slate-950/80 px-6 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           <h2 className="text-sm font-semibold text-slate-200 uppercase tracking-wider">
             Optimized Resume Snapshot
           </h2>
         </div>
-        <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+        <div className="flex flex-wrap items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-medium">
           <button
             onClick={() => setActiveTab('preview')}
             className={`px-3 py-1.5 rounded-md transition-all ${
@@ -74,11 +81,42 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             Audit Changes ({changes.length})
           </button>
+          {proposedItems.length > 0 && (
+            <button
+              onClick={() => setActiveTab('proposed')}
+              className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+                activeTab === 'proposed'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-amber-400 hover:text-amber-200 bg-amber-500/10 border border-amber-500/30'
+              }`}
+            >
+              <Lightbulb className="w-3.5 h-3.5" />
+              Proposed Bullets ({proposedItems.length})
+            </button>
+          )}
         </div>
       </div>
 
       {activeTab === 'preview' ? (
         <div className="p-8 sm:p-12 space-y-8 bg-slate-900/60 max-w-4xl mx-auto">
+          {/* Banner if Proposed Content Exists */}
+          {proposedItems.length > 0 && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-200">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span>
+                  <strong>{proposedItems.length} Proposed Industry Bullets</strong> are available for review. They have not been added to your factual resume history without confirmation.
+                </span>
+              </div>
+              <button
+                onClick={() => setActiveTab('proposed')}
+                className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 font-medium whitespace-nowrap"
+              >
+                Review Suggestions &rarr;
+              </button>
+            </div>
+          )}
+
           {/* Resume Header */}
           <div className="text-center pb-6 border-b border-slate-800">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
@@ -277,10 +315,10 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
             </section>
           )}
         </div>
-      ) : (
+      ) : activeTab === 'audit' ? (
         /* Audit Trail View */
         <div className="p-6 space-y-4">
-          <div className="flex items-center gap-4 text-xs font-semibold px-2 py-1">
+          <div className="flex flex-wrap items-center gap-4 text-xs font-semibold px-2 py-1">
             <span className="flex items-center gap-1.5 text-emerald-400">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               Green: Newly Added
@@ -293,6 +331,10 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
               Red: Omitted / Replaced
             </span>
+            <span className="flex items-center gap-1.5 text-purple-400">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+              Purple: Suggested / Pending Confirmation
+            </span>
           </div>
 
           <div className="space-y-3">
@@ -304,6 +346,8 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
                     ? 'bg-emerald-950/20 border-emerald-500/30'
                     : ch.change_type === 'MODIFIED'
                     ? 'bg-amber-950/20 border-amber-500/30'
+                    : ch.change_type === 'PROPOSED'
+                    ? 'bg-purple-950/20 border-purple-500/30'
                     : 'bg-rose-950/20 border-rose-500/30'
                 }`}
               >
@@ -311,17 +355,32 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
                     {ch.section}
                   </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      ch.change_type === 'ADDED'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                        : ch.change_type === 'MODIFIED'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
-                    }`}
-                  >
-                    {ch.change_type}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        ch.change_type === 'ADDED'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : ch.change_type === 'MODIFIED'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                          : ch.change_type === 'PROPOSED'
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      }`}
+                    >
+                      {ch.change_type}
+                    </span>
+                    <span
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        ch.confirmation_status === 'PENDING_CONFIRMATION' || ch.change_type === 'PROPOSED'
+                          ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                      }`}
+                    >
+                      {ch.confirmation_status === 'PENDING_CONFIRMATION' || ch.change_type === 'PROPOSED'
+                        ? 'Requires Confirmation'
+                        : 'Verified'}
+                    </span>
+                  </div>
                 </div>
 
                 {ch.original_content && (
@@ -349,6 +408,58 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
                     <span className="text-emerald-400 font-medium">Profile Evidence: </span>
                     {ch.supporting_evidence || 'Career Profile background analysis'}
                   </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* Proposed Content & Suggestions View */
+        <div className="p-6 space-y-5">
+          <div className="p-4 rounded-xl bg-slate-950/90 border border-amber-500/30 space-y-2">
+            <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+              <Lightbulb className="w-4 h-4 text-amber-400" />
+              Proposed Industry-Standard Bullets & Suggested Experience
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              These role-specific responsibility bullets were formulated to match important JD requirements.
+              Because supporting evidence was not verified in your career records, they are held separately and will <strong>never be automatically published as factual employment</strong>.
+            </p>
+            <div className="text-[11px] text-indigo-300 bg-indigo-950/30 p-2.5 rounded border border-indigo-500/20 flex items-start gap-2 mt-2">
+              <Check className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
+              <span>
+                <strong>How to Confirm:</strong> If you did perform any of these activities, click the <strong>NO (Needs Revision)</strong> button in the review sidebar and write:
+                <em> "Please confirm and include the proposed bullet for [Requirement] into my work experience."</em>
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {proposedItems.map((item, idx) => (
+              <div
+                key={idx}
+                className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3 text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold text-[10px]">
+                      Target: {item.target_section}
+                    </span>
+                    <span className="font-bold text-white text-xs">
+                      Requirement: {item.targeted_jd_requirement}
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium">
+                    Requires User Confirmation
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-medium text-xs leading-relaxed">
+                  &ldquo;{item.proposed_text}&rdquo;
+                </div>
+
+                <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                  <span><strong>Reason:</strong> {item.reason}</span>
                 </div>
               </div>
             ))}
