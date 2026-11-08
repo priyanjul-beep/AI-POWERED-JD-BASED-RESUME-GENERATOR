@@ -1,7 +1,7 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 class ApiClient {
-  private getAccessToken(): string | null {
+  public getAccessToken(): string | null {
     if (typeof window === 'undefined') return null;
     return localStorage.getItem('access_token');
   }

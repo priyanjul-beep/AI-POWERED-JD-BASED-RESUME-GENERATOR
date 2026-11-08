@@ -40,8 +40,29 @@ from .serializers import (
     ReviseRequestSerializer,
     ApproveRequestSerializer,
 )
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 logger = logging.getLogger(__name__)
+
+
+class QueryParamOrHeaderJWTAuthentication(JWTAuthentication):
+    """
+    Authenticates user from 'Authorization: Bearer <token>' header OR '?token=<token>' query param.
+    Enables seamless browser tab opening and downloading without 401 Unauthorized errors.
+    """
+    def authenticate(self, request):
+        header = self.get_header(request)
+        if header is None:
+            raw_token = request.query_params.get('token') or request.GET.get('token')
+            if raw_token is None:
+                return None
+        else:
+            raw_token = self.get_raw_token(header)
+        if raw_token is None:
+            return None
+
+        validated_token = self.get_validated_token(raw_token)
+        return self.get_user(validated_token), validated_token
 
 
 def _serialize_profile_for_llm(user) -> dict:
@@ -373,6 +394,7 @@ class ResumeReviseView(APIView):
         generation.current_version_number = new_version_num
         generation.status = GenerationStatus.REVISING
         generation.save()
+        generation.refresh_from_db()
 
         return Response(ResumeGenerationSerializer(generation).data, status=status.HTTP_200_OK)
 
@@ -609,6 +631,7 @@ class ResumeCancelView(APIView):
 
 class ResumePdfView(APIView):
     """Streams the generated PDF for browser view / preview."""
+    authentication_classes = (QueryParamOrHeaderJWTAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk):
@@ -633,6 +656,7 @@ class ResumePdfView(APIView):
 
 class ResumeDownloadView(APIView):
     """Downloads the finalized PDF file with user-specified or normalized filename."""
+    authentication_classes = (QueryParamOrHeaderJWTAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request, pk):

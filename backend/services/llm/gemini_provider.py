@@ -2,9 +2,13 @@ import json
 import logging
 import re
 import time
+import warnings
 from typing import Any, Dict, Optional, Type
 from django.conf import settings
 from pydantic import BaseModel, ValidationError
+
+# Suppress deprecation warnings from legacy google.generativeai SDK
+warnings.filterwarnings("ignore", category=FutureWarning, module="google")
 
 from .base import BaseLLMProvider, LLMProviderError, LLMRateLimitError, LLMAuthenticationError
 
@@ -50,7 +54,10 @@ class GeminiProvider(BaseLLMProvider):
             logger.warning("GEMINI_API_KEY is not configured in backend settings or .env.")
 
         try:
-            import google.generativeai as genai
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=FutureWarning)
+                import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             self._client_initialized = True
         except Exception as e:

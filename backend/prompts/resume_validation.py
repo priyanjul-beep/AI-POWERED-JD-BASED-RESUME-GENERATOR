@@ -1,13 +1,24 @@
 from typing import List, Optional, Dict, Any, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 class ChangeDetail(BaseModel):
-    section: str = Field(description="Section changed: Technical Skills, Work Experience, Projects, Professional Summary")
-    change_type: str = Field(description="ADDED, MODIFIED, or REMOVED")
-    original_content: str = Field(default="", description="Original text or bullet point before optimization")
-    updated_content: str = Field(description="Updated text or bullet point after optimization")
-    reason: str = Field(description="Why this change was made to match the JD")
-    supporting_evidence: str = Field(default="", description="Evidence from profile or reference resume supporting this change")
+    section: Optional[str] = Field(default="General", description="Section changed: Technical Skills, Work Experience, Projects, Professional Summary")
+    change_type: Optional[str] = Field(default="MODIFIED", description="ADDED, MODIFIED, or REMOVED")
+    original_content: Optional[str] = Field(default="", description="Original text or bullet point before optimization")
+    updated_content: Optional[str] = Field(default="", description="Updated text or bullet point after optimization")
+    reason: Optional[str] = Field(default="", description="Why this change was made to match the JD")
+    supporting_evidence: Optional[str] = Field(default="", description="Evidence from profile or reference resume supporting this change")
+
+    @field_validator('original_content', 'updated_content', 'reason', 'supporting_evidence', 'section', 'change_type', mode='before')
+    @classmethod
+    def coerce_to_string(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        if isinstance(v, list):
+            return "\n".join(str(item) for item in v if item is not None)
+        if isinstance(v, dict):
+            return " ".join(str(val) for val in v.values() if val is not None)
+        return str(v)
 
 class ResumeHeader(BaseModel):
     full_name: str
@@ -31,8 +42,8 @@ class WorkExperienceItem(BaseModel):
     title: str
     company: str
     location: Optional[str] = ""
-    start_date: str
-    end_date: str
+    start_date: Optional[str] = ""
+    end_date: Optional[str] = ""
     is_current: bool = False
     technologies: List[str] = Field(default_factory=list)
     bullet_points: List[str] = Field(default_factory=list)
@@ -44,7 +55,7 @@ class ProjectItem(BaseModel):
     github_url: Optional[str] = ""
     demo_url: Optional[str] = ""
     technologies: List[str] = Field(default_factory=list)
-    description: str = ""
+    description: Optional[str] = ""
     highlights: List[str] = Field(default_factory=list)
 
 class EducationItem(BaseModel):
@@ -58,7 +69,7 @@ class EducationItem(BaseModel):
 
 class CertificationItem(BaseModel):
     name: str
-    issuing_organization: str
+    issuing_organization: Optional[str] = ""
     issue_date: Optional[str] = ""
     credential_id: Optional[str] = ""
 

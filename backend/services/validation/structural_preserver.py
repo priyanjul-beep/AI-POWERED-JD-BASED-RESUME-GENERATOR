@@ -290,6 +290,12 @@ def extract_project_urls_from_text(proj_title: str, text: str) -> Tuple[str, str
 
 
 def _clean_str(val: Any) -> str:
+    if val is None:
+        return ""
+    if isinstance(val, list):
+        return " \n".join(str(item) for item in val if item is not None).strip().lower()
+    if isinstance(val, dict):
+        return " ".join(str(v) for v in val.values() if v is not None).strip().lower()
     return str(val or "").strip().lower()
 
 
@@ -687,10 +693,45 @@ def enforce_structural_identity(
     ]
 
     for ch in raw_changes:
-        sec = (ch.get("section") or "").strip().lower()
-        reason = (ch.get("reason") or "").lower()
-        orig = (ch.get("original_content") or "").lower()
-        upd = (ch.get("updated_content") or "").lower()
+        if not isinstance(ch, dict):
+            continue
+
+        # Normalize fields so they are always clean strings
+        orig_raw = ch.get("original_content")
+        upd_raw = ch.get("updated_content")
+
+        if isinstance(orig_raw, list):
+            ch["original_content"] = "\n".join(str(x) for x in orig_raw if x is not None)
+        elif orig_raw is None:
+            ch["original_content"] = ""
+        else:
+            ch["original_content"] = str(orig_raw)
+
+        if isinstance(upd_raw, list):
+            ch["updated_content"] = "\n".join(str(x) for x in upd_raw if x is not None)
+        elif upd_raw is None:
+            ch["updated_content"] = ""
+        else:
+            ch["updated_content"] = str(upd_raw)
+
+        if ch.get("reason") is None:
+            ch["reason"] = ""
+        elif isinstance(ch.get("reason"), list):
+            ch["reason"] = "\n".join(str(x) for x in ch["reason"] if x is not None)
+        else:
+            ch["reason"] = str(ch["reason"])
+
+        if ch.get("supporting_evidence") is None:
+            ch["supporting_evidence"] = ""
+        elif isinstance(ch.get("supporting_evidence"), list):
+            ch["supporting_evidence"] = "\n".join(str(x) for x in ch["supporting_evidence"] if x is not None)
+        else:
+            ch["supporting_evidence"] = str(ch["supporting_evidence"])
+
+        sec = _clean_str(ch.get("section"))
+        reason = _clean_str(ch.get("reason"))
+        orig = _clean_str(ch.get("original_content"))
+        upd = _clean_str(ch.get("updated_content"))
 
         # Reject if change claims to have altered header or immutable identity
         if "header" in sec or "contact" in sec or "identity" in sec:

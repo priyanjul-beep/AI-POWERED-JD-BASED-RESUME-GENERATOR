@@ -133,11 +133,14 @@ def _extract_verified_resume_tokens(resume_data: Dict[str, Any]) -> Tuple[Set[st
         for ach in achievements:
             raw_strings.append(str(ach))
 
-    # Changes Applied (All fabricated and handled requirements)
+    # Changes Applied (Only approved/verified modifications, never pending/proposed)
     changes = resume_data.get('changes_applied', [])
     if isinstance(changes, list):
         for ch in changes:
             if isinstance(ch, dict):
+                # Never include pending confirmation or proposed changes in verified tokens
+                if ch.get('confirmation_status') == 'PENDING_CONFIRMATION' or ch.get('change_type') == 'PROPOSED':
+                    continue
                 raw_strings.append(ch.get('updated_content', ''))
                 raw_strings.append(ch.get('reason', ''))
                 raw_strings.append(ch.get('targeted_jd_requirement', ''))
@@ -299,6 +302,16 @@ def calculate_jd_match_scores(
         matched, _ = _is_skill_matched(req, tokens, combined_text)
         if not matched:
             evidence_gaps_clean.append(req)
+
+    # Any proposed requirements that are still unconfirmed also represent evidence gaps
+    for prop in resume_data.get('proposed_content', []):
+        if isinstance(prop, dict) and prop.get('targeted_jd_requirement'):
+            for req_part in prop['targeted_jd_requirement'].split(','):
+                req_strip = req_part.strip()
+                if req_strip and req_strip not in evidence_gaps_clean:
+                    matched, _ = _is_skill_matched(req_strip, tokens, combined_text)
+                    if not matched:
+                        evidence_gaps_clean.append(req_strip)
 
     # Apply moderate deduction for unverified gaps to prevent artificial score inflation
     if evidence_gaps_clean:
