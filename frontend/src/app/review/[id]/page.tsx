@@ -24,7 +24,9 @@ import {
   Eye, 
   FileCheck2,
   Clock,
-  History
+  History,
+  Target,
+  FileText
 } from 'lucide-react';
 
 export default function ResumeReviewPage() {
@@ -38,6 +40,7 @@ export default function ResumeReviewPage() {
   const [selectedVersionNum, setSelectedVersionNum] = useState<number>(1);
   const [currentVersion, setCurrentVersion] = useState<ResumeVersion | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resumeMode, setResumeMode] = useState<'tailored' | 'general'>('tailored');
 
   // NO comment revision state
   const [userComment, setUserComment] = useState('');
@@ -194,32 +197,33 @@ export default function ResumeReviewPage() {
     }
   };
 
-  // Authenticated PDF Preview via Blob URL with fallback to tokenized direct URL
+  // Authenticated PDF Preview via Blob URL with fallback to tokenized direct URL (supports tailored & general modes)
   const handlePreviewPdf = async () => {
     setIsPreviewingPdf(true);
     try {
-      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/pdf/`);
+      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}`);
       const blobUrl = window.URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (err: unknown) {
       console.warn('Blob preview failed, falling back to tokenized URL:', err);
       const token = api.getAccessToken();
-      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/${token ? `?token=${token}` : ''}`;
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}${token ? `&token=${token}` : ''}`;
       window.open(directUrl, '_blank');
     } finally {
       setIsPreviewingPdf(false);
     }
   };
 
-  // Authenticated PDF Download via Blob URL with fallback to tokenized direct URL
+  // Authenticated PDF Download via Blob URL with fallback to tokenized direct URL (supports tailored & general modes)
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
     try {
-      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/download/`);
+      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/download/?mode=${resumeMode}`);
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = finalFilename || defaultFilename;
+      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
+      link.download = downloadName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -227,10 +231,11 @@ export default function ResumeReviewPage() {
     } catch (err: unknown) {
       console.warn('Blob download failed, falling back to tokenized URL:', err);
       const token = api.getAccessToken();
-      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/${token ? `?token=${token}` : ''}`;
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}${token ? `&token=${token}` : ''}`;
       const fallbackLink = document.createElement('a');
       fallbackLink.href = directUrl;
-      fallbackLink.download = finalFilename || defaultFilename;
+      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
+      fallbackLink.download = downloadName;
       document.body.appendChild(fallbackLink);
       fallbackLink.click();
       document.body.removeChild(fallbackLink);
@@ -360,8 +365,54 @@ export default function ResumeReviewPage() {
           </div>
         </div>
 
-        {/* Version History Selector & Cancel Button */}
+        {/* Resume Mode Switcher, Version History & Action Controls */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Active 1-Page Layout Mode Selector */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setResumeMode('tailored')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                resumeMode === 'tailored'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Only shows technical skills and experience bullet points required for the JD"
+            >
+              <Target className="w-3.5 h-3.5 text-indigo-300" />
+              <span>🎯 JD-Tailored (1-Page)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setResumeMode('general')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                resumeMode === 'general'
+                  ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Shows complete career profile with all technical skills and employment bullets"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-300" />
+              <span>📄 General (1-Page)</span>
+            </button>
+          </div>
+
+          {/* Quick Preview PDF Button (Available anytime during review) */}
+          <button
+            type="button"
+            onClick={handlePreviewPdf}
+            disabled={isPreviewingPdf}
+            className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition-colors disabled:opacity-50"
+            title={`Preview 1-page PDF in ${resumeMode === 'tailored' ? 'JD-Tailored' : 'General'} mode`}
+          >
+            {isPreviewingPdf ? (
+              <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+            ) : (
+              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+            )}
+            <span>Preview 1-Page PDF</span>
+          </button>
+
           <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
               <History className="w-3.5 h-3.5" />
@@ -448,9 +499,12 @@ export default function ResumeReviewPage() {
         <div className="lg:col-span-2 space-y-6">
           <StructuredResumeView
             resume={currentVersion.structured_resume_data}
+            tailoredResume={currentVersion.tailored_resume_data}
             changes={currentVersion.change_analysis}
             selectedProposedBullets={selectedProposedBullets}
             onToggleProposedBullet={handleToggleProposedBullet}
+            activeResumeMode={resumeMode}
+            onChangeResumeMode={setResumeMode}
           />
         </div>
 

@@ -19,7 +19,9 @@ import {
   Trophy,
   Plus,
   RotateCcw,
-  CheckCircle2
+  CheckCircle2,
+  Target,
+  FileText
 } from 'lucide-react';
 
 interface ExtendedResumeData extends StructuredResumeData {
@@ -33,33 +35,46 @@ interface ExtendedResumeData extends StructuredResumeData {
 
 interface StructuredResumeViewProps {
   resume: StructuredResumeData;
+  tailoredResume?: StructuredResumeData;
   changes?: ChangeDetail[];
   selectedProposedBullets?: string[];
   onToggleProposedBullet?: (item: ProposedContentItem) => void;
+  activeResumeMode?: 'tailored' | 'general';
+  onChangeResumeMode?: (mode: 'tailored' | 'general') => void;
 }
 
 export default function StructuredResumeView({ 
   resume, 
+  tailoredResume,
   changes = [],
   selectedProposedBullets = [],
-  onToggleProposedBullet
+  onToggleProposedBullet,
+  activeResumeMode = 'tailored',
+  onChangeResumeMode
 }: StructuredResumeViewProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'audit' | 'proposed'>('preview');
 
-  const extResume = resume as ExtendedResumeData;
+  const currentResume = (activeResumeMode === 'tailored' && tailoredResume) ? tailoredResume : resume;
+  const extResume = currentResume as ExtendedResumeData;
   const proposedItems: ProposedContentItem[] = resume.proposed_content || [];
-  const workExperiences = resume.work_experience || extResume.experiences || extResume.experience || [];
-  const projectsList = resume.projects || extResume.key_projects || [];
+  const workExperiences = currentResume.work_experience || extResume.experiences || extResume.experience || [];
+  const projectsList = currentResume.projects || extResume.key_projects || [];
   const achievementsAndCoding: string[] = 
-    resume.achievements_and_coding ||
+    currentResume.achievements_and_coding ||
     extResume.achievements_hackathons_coding ||
     extResume.coding_and_hackathons ||
     extResume.achievements_and_hackathons ||
     [
-      ...(resume.achievements || []),
-      ...(resume.coding_profiles || []),
-      ...(resume.hackathons || [])
+      ...(currentResume.achievements || []),
+      ...(currentResume.coding_profiles || []),
+      ...(currentResume.hackathons || [])
     ];
+
+  const handleModeChange = (mode: 'tailored' | 'general') => {
+    if (onChangeResumeMode) {
+      onChangeResumeMode(mode);
+    }
+  };
 
   // Map of text snippets to change detail for inline visual cueing
   const changeMap = new Map<string, ChangeDetail>();
@@ -92,14 +107,32 @@ export default function StructuredResumeView({
         </div>
         <div className="flex flex-wrap items-center gap-1.5 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs font-medium">
           <button
-            onClick={() => setActiveTab('preview')}
-            className={`px-3 py-1.5 rounded-md transition-all ${
-              activeTab === 'preview'
-                ? 'bg-indigo-600 text-white shadow-sm'
+            onClick={() => {
+              handleModeChange('tailored');
+              setActiveTab('preview');
+            }}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              activeTab === 'preview' && activeResumeMode === 'tailored'
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm font-semibold'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            Formatted Resume View
+            <Target className="w-3.5 h-3.5 text-indigo-300" />
+            <span>🎯 JD-Tailored View</span>
+          </button>
+          <button
+            onClick={() => {
+              handleModeChange('general');
+              setActiveTab('preview');
+            }}
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1.5 ${
+              activeTab === 'preview' && activeResumeMode === 'general'
+                ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-slate-300" />
+            <span>📄 General Profile View</span>
           </button>
           <button
             onClick={() => setActiveTab('audit')}
@@ -110,7 +143,7 @@ export default function StructuredResumeView({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            Audit Changes ({changes.length})
+            <span>Audit Changes ({changes.length})</span>
           </button>
           {proposedItems.length > 0 && (
             <button
@@ -135,6 +168,41 @@ export default function StructuredResumeView({
 
       {activeTab === 'preview' ? (
         <div className="p-8 sm:p-12 space-y-8 bg-slate-900/60 max-w-4xl mx-auto">
+          {/* Active Mode Explanation Banner */}
+          {activeResumeMode === 'tailored' ? (
+            <div className="p-3.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-200">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <span>
+                  <strong>🎯 JD-Tailored 1-Page View:</strong> Technical skills and experience bullet points that do not directly address the target JD requirements have been cleanly omitted for maximum ATS keyword relevance and single-page density.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleModeChange('general')}
+                className="px-2.5 py-1 rounded bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-100 font-medium whitespace-nowrap text-[11px]"
+              >
+                Switch to General Resume &rarr;
+              </button>
+            </div>
+          ) : (
+            <div className="p-3.5 rounded-xl bg-slate-800/60 border border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-300">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <span>
+                  <strong>📄 General Profile 1-Page View:</strong> Displays your full comprehensive career history, including all technical skills and employment bullet points, formatted to fit on one page.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleModeChange('tailored')}
+                className="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-100 font-medium whitespace-nowrap text-[11px]"
+              >
+                Switch to JD-Tailored View &rarr;
+              </button>
+            </div>
+          )}
+
           {/* Banner if Proposed Content Exists */}
           {proposedItems.length > 0 && (
             <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-200">
@@ -163,71 +231,71 @@ export default function StructuredResumeView({
           {/* Resume Header */}
           <div className="text-center pb-6 border-b border-slate-800">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-              {resume.header.full_name}
+              {currentResume.header?.full_name}
             </h1>
             <p className="text-sm sm:text-base font-semibold text-indigo-400 mt-1">
-              {resume.header.headline}
+              {currentResume.header?.headline}
             </p>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-400 mt-2">
-              {resume.header.email && <span>{resume.header.email}</span>}
-              {resume.header.phone && <span>&bull; {resume.header.phone}</span>}
-              {resume.header.location && <span>&bull; {resume.header.location}</span>}
-              {resume.header.linkedin_url && (
-                <span>&bull; <a href={resume.header.linkedin_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">LinkedIn</a></span>
+              {currentResume.header?.email && <span>{currentResume.header.email}</span>}
+              {currentResume.header?.phone && <span>&bull; {currentResume.header.phone}</span>}
+              {currentResume.header?.location && <span>&bull; {currentResume.header.location}</span>}
+              {currentResume.header?.linkedin_url && (
+                <span>&bull; <a href={currentResume.header.linkedin_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">LinkedIn</a></span>
               )}
-              {resume.header.github_url && (
-                <span>&bull; <a href={resume.header.github_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">GitHub</a></span>
+              {currentResume.header?.github_url && (
+                <span>&bull; <a href={currentResume.header.github_url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:underline">GitHub</a></span>
               )}
             </div>
           </div>
 
           {/* Professional Summary */}
-          {resume.summary && (
+          {currentResume.summary && (
             <section className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Professional Summary
               </h3>
-              <p className={`text-sm text-slate-300 leading-relaxed rounded p-1 ${getHighlightClass(resume.summary)}`}>
-                {resume.summary}
+              <p className={`text-sm text-slate-300 leading-relaxed rounded p-1 ${getHighlightClass(currentResume.summary)}`}>
+                {currentResume.summary}
               </p>
             </section>
           )}
 
           {/* Technical Skills */}
-          {resume.skills && (
+          {currentResume.skills && (
             <section className="space-y-2.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Technical Skills
               </h3>
               <div className="space-y-1.5 text-xs text-slate-300">
-                {resume.skills.languages?.length > 0 && (
+                {currentResume.skills.languages?.length > 0 && (
                   <div className="flex flex-wrap items-baseline gap-1.5">
                     <span className="font-semibold text-slate-200">Programming Languages:</span>
-                    <span>{resume.skills.languages.join(', ')}</span>
+                    <span>{currentResume.skills.languages.join(', ')}</span>
                   </div>
                 )}
-                {resume.skills.frameworks?.length > 0 && (
+                {currentResume.skills.frameworks?.length > 0 && (
                   <div className="flex flex-wrap items-baseline gap-1.5">
                     <span className="font-semibold text-slate-200">Frameworks & Libraries:</span>
-                    <span>{resume.skills.frameworks.join(', ')}</span>
+                    <span>{currentResume.skills.frameworks.join(', ')}</span>
                   </div>
                 )}
-                {resume.skills.databases?.length > 0 && (
+                {currentResume.skills.databases?.length > 0 && (
                   <div className="flex flex-wrap items-baseline gap-1.5">
                     <span className="font-semibold text-slate-200">Databases & Storage:</span>
-                    <span>{resume.skills.databases.join(', ')}</span>
+                    <span>{currentResume.skills.databases.join(', ')}</span>
                   </div>
                 )}
-                {resume.skills.cloud_and_devops?.length > 0 && (
+                {currentResume.skills.cloud_and_devops?.length > 0 && (
                   <div className="flex flex-wrap items-baseline gap-1.5">
                     <span className="font-semibold text-slate-200">Cloud & DevOps:</span>
-                    <span>{resume.skills.cloud_and_devops.join(', ')}</span>
+                    <span>{currentResume.skills.cloud_and_devops.join(', ')}</span>
                   </div>
                 )}
-                {resume.skills.developer_tools?.length > 0 && (
+                {currentResume.skills.developer_tools?.length > 0 && (
                   <div className="flex flex-wrap items-baseline gap-1.5">
                     <span className="font-semibold text-slate-200">Tools & Architecture:</span>
-                    <span>{resume.skills.developer_tools.join(', ')}</span>
+                    <span>{currentResume.skills.developer_tools.join(', ')}</span>
                   </div>
                 )}
               </div>
@@ -245,7 +313,7 @@ export default function StructuredResumeView({
                   <div key={idx} className="space-y-1.5">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="text-sm font-bold text-white">
-                        {exp.title} <span className="font-normal text-slate-400">&mdash; {exp.company}</span>
+                        {exp.company} <span className="font-normal text-slate-400">&mdash; {exp.title}</span>
                       </div>
                       <div className="text-xs text-slate-400 font-medium">
                         {exp.location ? `${exp.location} | ` : ''}{exp.start_date} &ndash; {exp.end_date || 'Present'}
@@ -344,13 +412,13 @@ export default function StructuredResumeView({
           )}
 
           {/* Education */}
-          {resume.education && resume.education.length > 0 && (
+          {currentResume.education && currentResume.education.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Education
               </h3>
               <div className="space-y-2">
-                {resume.education.map((edu, idx) => (
+                {currentResume.education.map((edu, idx) => (
                   <div key={idx} className="flex justify-between items-baseline text-xs">
                     <div>
                       <span className="font-bold text-white">{edu.degree}</span>
@@ -365,13 +433,13 @@ export default function StructuredResumeView({
           )}
 
           {/* Certifications */}
-          {resume.certifications && resume.certifications.length > 0 && (
+          {currentResume.certifications && currentResume.certifications.length > 0 && (
             <section className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1">
                 Certifications
               </h3>
               <div className="space-y-1.5 text-xs text-slate-300">
-                {resume.certifications.map((cert, idx) => (
+                {currentResume.certifications.map((cert, idx) => (
                   <div key={idx} className="flex items-center gap-1.5">
                     <Award className="w-3.5 h-3.5 text-amber-400" />
                     <span className="font-semibold text-white">{cert.name}</span>

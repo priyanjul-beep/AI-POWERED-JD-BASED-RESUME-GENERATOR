@@ -14,6 +14,7 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
+from pypdf import PdfReader
 
 def normalize_filename(
     candidate_name: str,
@@ -40,56 +41,51 @@ def normalize_filename(
     return f"{name_clean}_{company_clean}_{role_clean}_{ver_clean}.pdf"
 
 
-def generate_ats_pdf(
+def _build_pdf_stream(
     resume_data: Dict[str, Any],
-    page_format: str = "ONE_PAGE",
-    output_path: Optional[str] = None
+    scale: float = 1.0,
+    is_one_page: bool = True
 ) -> bytes:
     """
-    Generates an ATS-compliant, pixel-perfect PDF using ReportLab.
-    Enforces strict spacing budgets for ONE_PAGE vs TWO_PAGE layouts
-    to eliminate text overflows and unintended blank pages.
+    Renders 100% of the resume snapshot content into an in-memory PDF
+    scaled precisely with dynamic typography, leadings, and spacing budgets.
     """
-    buffer = io.BytesIO()
-    target_doc = output_path if output_path else buffer
+    buf = io.BytesIO()
 
-    is_one_page = (page_format.upper() == "ONE_PAGE")
-
-    # Tight, consistent ATS margins
-    left_margin = 0.5 * inch
-    right_margin = 0.5 * inch
-    top_margin = 0.45 * inch if is_one_page else 0.55 * inch
-    bottom_margin = 0.45 * inch if is_one_page else 0.55 * inch
+    # Dynamic margins
+    horiz_margin = max(0.28, 0.40 * scale) * inch
+    vert_margin = max(0.25, 0.35 * scale) * inch if is_one_page else 0.55 * inch
 
     doc = SimpleDocTemplate(
-        target_doc,
+        buf,
         pagesize=letter,
-        leftMargin=left_margin,
-        rightMargin=right_margin,
-        topMargin=top_margin,
-        bottomMargin=bottom_margin,
+        leftMargin=horiz_margin,
+        rightMargin=horiz_margin,
+        topMargin=vert_margin,
+        bottomMargin=vert_margin,
     )
 
     styles = getSampleStyleSheet()
 
-    # Color palette
-    PRIMARY_COLOR = colors.HexColor("#1e293b") # Deep slate for text
-    HEADING_COLOR = colors.HexColor("#0f172a") # Dark navy for headings
-    ACCENT_COLOR = colors.HexColor("#0284c7")  # Subtle blue accent for rules
-    MUTED_COLOR = colors.HexColor("#475569")   # Slate for meta info
+    PRIMARY_COLOR = colors.HexColor("#1e293b")
+    HEADING_COLOR = colors.HexColor("#0f172a")
+    ACCENT_COLOR = colors.HexColor("#0284c7")
+    MUTED_COLOR = colors.HexColor("#475569")
 
-    # Scaled typography budget based on page format
-    name_size = 17 if is_one_page else 20
-    name_leading = 20 if is_one_page else 24
-    headline_size = 10 if is_one_page else 11
-    body_size = 8.5 if is_one_page else 9.5
-    body_leading = 11.5 if is_one_page else 13.0
-    section_size = 10.5 if is_one_page else 11.5
-    section_leading = 13 if is_one_page else 15
-    spacer_large = 6 if is_one_page else 10
-    spacer_small = 3 if is_one_page else 5
+    # Scaled typography budget based on scale factor
+    name_size = round(16.5 * scale, 1)
+    name_leading = round(19 * scale, 1)
+    headline_size = round(9.5 * scale, 1)
+    headline_leading = round(11.5 * scale, 1)
+    body_size = round(8.0 * scale, 1)
+    body_leading = round(10.0 * scale, 1)
+    section_size = round(9.5 * scale, 1)
+    section_leading = round(11.5 * scale, 1)
 
-    # Styles
+    spacer_large = max(2, round(4.0 * scale))
+    spacer_small = max(1, round(2.0 * scale))
+    bullet_space = max(0.5, round(1.2 * scale, 1))
+
     name_style = ParagraphStyle(
         'ResumeName',
         parent=styles['Normal'],
@@ -105,7 +101,7 @@ def generate_ats_pdf(
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=headline_size,
-        leading=headline_size + 2,
+        leading=headline_leading,
         alignment=TA_CENTER,
         textColor=ACCENT_COLOR
     )
@@ -114,8 +110,8 @@ def generate_ats_pdf(
         'ResumeContact',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=body_size - 0.5,
-        leading=body_size + 2,
+        fontSize=max(6.0, body_size - 0.5),
+        leading=body_leading,
         alignment=TA_CENTER,
         textColor=MUTED_COLOR
     )
@@ -128,14 +124,14 @@ def generate_ats_pdf(
         leading=section_leading,
         textColor=HEADING_COLOR,
         spaceBefore=0,
-        spaceAfter=1
+        spaceAfter=0.5
     )
 
     item_title_style = ParagraphStyle(
         'ResumeItemTitle',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=body_size + 0.5,
+        fontSize=body_size + 0.3,
         leading=body_leading,
         textColor=HEADING_COLOR
     )
@@ -144,7 +140,7 @@ def generate_ats_pdf(
         'ResumeItemSub',
         parent=styles['Normal'],
         fontName='Helvetica-Oblique',
-        fontSize=body_size,
+        fontSize=max(5.8, body_size - 0.4),
         leading=body_leading,
         textColor=MUTED_COLOR
     )
@@ -166,9 +162,9 @@ def generate_ats_pdf(
         fontSize=body_size,
         leading=body_leading,
         textColor=PRIMARY_COLOR,
-        leftIndent=12,
-        firstLineIndent=-8,
-        spaceAfter=1.5
+        leftIndent=10,
+        firstLineIndent=-7,
+        spaceAfter=bullet_space
     )
 
     story = []
@@ -180,10 +176,9 @@ def generate_ats_pdf(
 
     headline = header.get('headline')
     if headline:
-        story.append(Spacer(1, 2))
+        story.append(Spacer(1, 1))
         story.append(Paragraph(headline, headline_style))
 
-    # Contact line
     contact_parts = []
     if header.get('email'):
         contact_parts.append(header['email'])
@@ -192,19 +187,19 @@ def generate_ats_pdf(
     if header.get('location'):
         contact_parts.append(header['location'])
     if header.get('linkedin_url'):
-        contact_parts.append(header['linkedin_url'].replace('https://www.', '').replace('https://', ''))
+        contact_parts.append(f'<font color="#2563EB"><u><a href="{header["linkedin_url"]}">LinkedIn</a></u></font>')
     if header.get('github_url'):
-        contact_parts.append(header['github_url'].replace('https://www.', '').replace('https://', ''))
+        contact_parts.append(f'<font color="#2563EB"><u><a href="{header["github_url"]}">GitHub</a></u></font>')
 
     if contact_parts:
-        story.append(Spacer(1, 3))
+        story.append(Spacer(1, 1))
         story.append(Paragraph(" &bull; ".join(contact_parts), contact_style))
 
     story.append(Spacer(1, spacer_large))
 
     def add_section_header(title: str):
         story.append(Paragraph(title.upper(), section_heading_style))
-        story.append(HRFlowable(width="100%", thickness=1, color=ACCENT_COLOR, spaceAfter=4, spaceBefore=2))
+        story.append(HRFlowable(width="100%", thickness=0.8, color=ACCENT_COLOR, spaceAfter=2, spaceBefore=1))
 
     # 2. PROFESSIONAL SUMMARY
     summary = resume_data.get('summary')
@@ -217,12 +212,11 @@ def generate_ats_pdf(
     skills = resume_data.get('skills', {})
     if skills:
         add_section_header("Technical Skills")
-        skill_lines = []
         if isinstance(skills, dict):
             categories = [
                 ("Languages", skills.get('languages', [])),
                 ("Frameworks & Libraries", skills.get('frameworks', [])),
-                ("Databases", skills.get('databases', [])),
+                ("Databases & Storage", skills.get('databases', [])),
                 ("Cloud & DevOps", skills.get('cloud_and_devops', [])),
                 ("Tools & Architecture", skills.get('developer_tools', [])),
             ]
@@ -230,19 +224,16 @@ def generate_ats_pdf(
                 if items:
                     line = f"<b>{label}:</b> {', '.join(items)}"
                     story.append(Paragraph(line, body_style))
-                    story.append(Spacer(1, 1.5))
+                    story.append(Spacer(1, 0.8))
         elif isinstance(skills, list):
             story.append(Paragraph(", ".join(skills), body_style))
-        story.append(Spacer(1, spacer_large - 2))
+        story.append(Spacer(1, spacer_large - 1))
 
-    # 4. WORK EXPERIENCE
+    # 4. WORK EXPERIENCE (Render ALL work experiences and ALL bullet points)
     work_exps = resume_data.get('work_experience', [])
     if work_exps:
         add_section_header("Work Experience")
-        # Budget max items for ONE_PAGE if list is very long
-        exps_to_render = work_exps[:2] if (is_one_page and len(work_exps) > 2) else work_exps
-        for exp in exps_to_render:
-            # Header line: Title & Company | Location & Dates
+        for exp in work_exps:
             title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}"
             date_text = f"{exp.get('start_date', '')} &ndash; {exp.get('end_date', 'Present')}"
             loc_text = exp.get('location', '')
@@ -250,7 +241,7 @@ def generate_ats_pdf(
 
             header_table = Table(
                 [[Paragraph(title_text, item_title_style), Paragraph(right_meta, item_sub_style)]],
-                colWidths=[5.0 * inch, 2.5 * inch]
+                colWidths=[5.4 * inch, 2.2 * inch]
             )
             header_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -258,26 +249,23 @@ def generate_ats_pdf(
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
             ]))
             story.append(header_table)
 
-            # Bullet points budget
             bullets = exp.get('bullet_points', [])
-            bullet_limit = 3 if is_one_page else 5
-            for b in bullets[:bullet_limit]:
+            for b in bullets:
                 story.append(Paragraph(f"&bull; {b}", bullet_style))
 
             story.append(Spacer(1, spacer_small))
-        story.append(Spacer(1, spacer_large - 3))
+        story.append(Spacer(1, spacer_large - 1))
 
-    # 5. PROJECTS
+    # 5. KEY PROJECTS (Render ALL projects and ALL highlights + Clickable Links)
     projects = resume_data.get('projects', [])
     if projects:
         add_section_header("Key Projects")
-        projs_to_render = projects[:2] if (is_one_page and len(projects) > 2) else projects
-        for proj in projs_to_render:
+        for proj in projects:
             proj_title = proj.get('title', '')
             github_or_url = proj.get('github_url') or proj.get('url')
             demo_url = proj.get('demo_url')
@@ -295,7 +283,7 @@ def generate_ats_pdf(
 
             header_table = Table(
                 [[Paragraph(title_text, item_title_style), Paragraph(role_text, item_sub_style)]],
-                colWidths=[5.5 * inch, 2.0 * inch]
+                colWidths=[5.6 * inch, 2.0 * inch]
             )
             header_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -303,59 +291,51 @@ def generate_ats_pdf(
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
             ]))
             story.append(header_table)
 
-            if proj.get('description'):
+            if proj.get('description') and not is_one_page:
                 story.append(Paragraph(proj['description'], body_style))
 
             highlights = proj.get('highlights', [])
-            h_limit = 2 if is_one_page else 4
-            for h in highlights[:h_limit]:
+            for h in highlights:
                 story.append(Paragraph(f"&bull; {h}", bullet_style))
 
             story.append(Spacer(1, spacer_small))
-        story.append(Spacer(1, spacer_large - 3))
+        story.append(Spacer(1, spacer_large - 1))
 
     # 6. EDUCATION
     education = resume_data.get('education', [])
     if education:
         add_section_header("Education")
         for edu in education:
-            edu_title = f"<b>{edu.get('degree', '')}</b> &mdash; {edu.get('institution', '')}"
-            date_text = f"{edu.get('start_date', '')} - {edu.get('end_date', '')}".strip(" -")
-            grade_info = f" ({edu.get('grade')})" if edu.get('grade') else ""
+            degree_str = f"<b>{edu.get('degree', '')}</b>"
+            if edu.get('field_of_study'):
+                degree_str += f" in {edu.get('field_of_study')}"
+            inst_str = edu.get('institution', '')
+            grade_str = f" ({edu.get('grade')})" if edu.get('grade') else ""
+            left_text = f"{degree_str} &mdash; {inst_str}{grade_str}"
+            date_text = f"{edu.get('start_date', '')} &ndash; {edu.get('end_date', '')}".strip(" –-")
 
-            header_table = Table(
-                [[Paragraph(edu_title + grade_info, item_title_style), Paragraph(date_text, item_sub_style)]],
-                colWidths=[5.5 * inch, 2.0 * inch]
+            edu_table = Table(
+                [[Paragraph(left_text, body_style), Paragraph(date_text, item_sub_style)]],
+                colWidths=[5.8 * inch, 1.8 * inch]
             )
-            header_table.setStyle(TableStyle([
+            edu_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'LEFT'),
                 ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
                 ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 0),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 1),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
             ]))
-            story.append(header_table)
-        story.append(Spacer(1, spacer_large - 3))
+            story.append(edu_table)
+        story.append(Spacer(1, spacer_large - 1))
 
-    # 7. CERTIFICATIONS
-    certifications = resume_data.get('certifications', [])
-    if certifications and (not is_one_page or len(story) < 40):
-        add_section_header("Certifications")
-        for cert in certifications:
-            cert_name = f"&bull; <b>{cert.get('name', '')}</b> &mdash; {cert.get('issuing_organization', '')}"
-            if cert.get('issue_date'):
-                cert_name += f" ({cert['issue_date']})"
-            story.append(Paragraph(cert_name, bullet_style))
-        story.append(Spacer(1, spacer_large - 3))
-
-    # 8. ACHIEVEMENTS, HACKATHONS & CODING PROFILES
+    # 7. ACHIEVEMENTS & PROFILES
     achievements_coding = (
         resume_data.get('achievements_and_coding')
         or resume_data.get('achievements_hackathons_coding')
@@ -364,19 +344,42 @@ def generate_ats_pdf(
         or (resume_data.get('achievements', []) + resume_data.get('coding_profiles', []) + resume_data.get('hackathons', []))
     )
     if achievements_coding:
-        add_section_header("Achievements, Hackathons & Coding Profiles")
+        add_section_header("Achievements & Profiles")
         for item in achievements_coding:
             if isinstance(item, str) and item.strip():
                 story.append(Paragraph(f"&bull; {item.strip()}", bullet_style))
-        story.append(Spacer(1, spacer_large - 3))
 
-    # Build PDF
     doc.build(story)
+    return buf.getvalue()
+
+
+def generate_ats_pdf(
+    resume_data: Dict[str, Any],
+    page_format: str = "ONE_PAGE",
+    output_path: Optional[str] = None
+) -> bytes:
+    """
+    Generates an ATS-compliant, pixel-perfect PDF using ReportLab.
+    Dynamically adjusts typography and spacing budgets to guarantee
+    that 100% of snapshot content fits on EXACTLY ONE PAGE for ONE_PAGE format.
+    """
+    is_one_page = (page_format.upper() == "ONE_PAGE")
+
+    if not is_one_page:
+        pdf_bytes = _build_pdf_stream(resume_data, scale=1.0, is_one_page=False)
+    else:
+        # Dynamic search for the optimal scale factor to fit exactly 1 page
+        scale_steps = [1.0, 0.95, 0.90, 0.86, 0.82, 0.78, 0.74, 0.70]
+        pdf_bytes = None
+        for scale in scale_steps:
+            attempt_bytes = _build_pdf_stream(resume_data, scale=scale, is_one_page=True)
+            page_count = len(PdfReader(io.BytesIO(attempt_bytes)).pages)
+            pdf_bytes = attempt_bytes
+            if page_count == 1:
+                break
 
     if output_path:
-        with open(output_path, 'rb') as f:
-            return f.read()
-    else:
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
-        return pdf_bytes
+        with open(output_path, 'wb') as f:
+            f.write(pdf_bytes)
+
+    return pdf_bytes

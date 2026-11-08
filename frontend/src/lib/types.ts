@@ -221,6 +221,7 @@ export interface ResumeVersion {
   id: number;
   version_number: number;
   structured_resume_data: StructuredResumeData;
+  tailored_resume_data?: StructuredResumeData;
   change_analysis: ChangeDetail[];
   user_instructions?: string;
   created_at: string;

@@ -636,22 +636,22 @@ class ResumePdfView(APIView):
 
     def get(self, request, pk):
         generation = get_object_or_404(ResumeGeneration, id=pk, user=request.user)
-        history_entry = FinalizedResumeHistory.objects.filter(generation=generation).order_by('-id').first()
+        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or 'general').lower()
 
-        if not history_entry or not history_entry.pdf_file:
-            # If not yet approved or finalized, generate preview from current version on the fly!
-            current_version = generation.versions.filter(version_number=generation.current_version_number).first()
-            if not current_version:
-                raise Http404("No resume content found.")
-            pdf_bytes = generate_ats_pdf(current_version.structured_resume_data, page_format='ONE_PAGE')
-            response = HttpResponse(pdf_bytes, content_type='application/pdf')
-            response['Content-Disposition'] = 'inline; filename="resume_preview.pdf"'
-            return response
+        current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+        if not current_version:
+            raise Http404("No resume content found.")
 
-        try:
-            return FileResponse(history_entry.pdf_file.open('rb'), content_type='application/pdf')
-        except Exception:
-            raise Http404("PDF file not found on storage.")
+        resume_content = current_version.structured_resume_data
+        if view_mode == 'tailored':
+            from services.matching.tailored_filter import filter_resume_for_jd
+            jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
+            resume_content = filter_resume_for_jd(resume_content, jd_analysis)
+
+        pdf_bytes = generate_ats_pdf(resume_content, page_format='ONE_PAGE')
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="resume_{view_mode}_preview.pdf"'
+        return response
 
 
 class ResumeDownloadView(APIView):
@@ -661,11 +661,32 @@ class ResumeDownloadView(APIView):
 
     def get(self, request, pk):
         generation = get_object_or_404(ResumeGeneration, id=pk, user=request.user)
-        history_entry = FinalizedResumeHistory.objects.filter(generation=generation).order_by('-id').first()
+        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or 'general').lower()
 
-        if not history_entry or not history_entry.pdf_file:
-            return Response({'error': 'PDF not yet finalized. Please approve resume first.'}, status=status.HTTP_400_BAD_REQUEST)
+        current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+        if not current_version:
+            raise Http404("No resume content found.")
 
-        response = FileResponse(history_entry.pdf_file.open('rb'), content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{history_entry.filename}"'
+        resume_content = current_version.structured_resume_data
+        if view_mode == 'tailored':
+            from services.matching.tailored_filter import filter_resume_for_jd
+            jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
+            resume_content = filter_resume_for_jd(resume_content, jd_analysis)
+
+        pdf_bytes = generate_ats_pdf(resume_content, page_format='ONE_PAGE')
+
+        candidate_name = (
+            resume_content.get('header', {}).get('full_name')
+            or request.user.get_full_name()
+            or request.user.username
+        )
+        norm_filename = normalize_filename(
+            candidate_name=candidate_name,
+            company_name=generation.target_company or "company",
+            target_role=f"{generation.target_role}_{view_mode}",
+            version_number=generation.current_version_number
+        )
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{norm_filename}"'
         return response
