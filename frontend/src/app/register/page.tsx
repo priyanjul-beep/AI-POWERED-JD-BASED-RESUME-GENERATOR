@@ -55,7 +55,7 @@ export default function RegisterPage() {
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="Priyanjul"
+                placeholder="First Name"
               />
             </div>
             <div className="space-y-1.5">
@@ -65,7 +65,7 @@ export default function RegisterPage() {
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="Sonkar"
+                placeholder="Last Name"
               />
             </div>
           </div>
@@ -80,7 +80,7 @@ export default function RegisterPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="priyanjul"
+                placeholder="Username"
               />
             </div>
           </div>
@@ -95,7 +95,7 @@ export default function RegisterPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="priyanjul@example.com"
+                placeholder="user@example.com"
               />
             </div>
           </div>
@@ -111,7 +111,7 @@ export default function RegisterPage() {
                 required
                 minLength={6}
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="••••••••"
+                placeholder="Password"
               />
             </div>
           </div>

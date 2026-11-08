@@ -1,4 +1,15 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const getResolvedApiBaseUrl = (): string => {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envUrl && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  // If running in browser on Vercel or any non-localhost domain without explicit API URL,
+  // return empty string for relative /api routing (supported via Next.js rewrites)
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return '';
+  }
+  return 'http://127.0.0.1:8000';
+};
 
 class ApiClient {
   public getAccessToken(): string | null {
@@ -19,8 +30,14 @@ class ApiClient {
     localStorage.removeItem('user_data');
   }
 
-  public async request<T = any>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  public getBaseUrl(): string {
+    return getResolvedApiBaseUrl();
+  }
+
+  public async request<T = unknown>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const baseUrl = this.getBaseUrl();
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = baseUrl ? `${baseUrl}${cleanEndpoint}` : cleanEndpoint;
     const token = this.getAccessToken();
 
     const headers: Record<string, string> = {
@@ -48,7 +65,8 @@ class ApiClient {
       const refreshToken = localStorage.getItem('refresh_token');
       if (refreshToken && !endpoint.includes('/token/refresh/')) {
         try {
-          const refreshRes = await fetch(`${API_BASE_URL}/api/auth/token/refresh/`, {
+          const refreshUrl = baseUrl ? `${baseUrl}/api/auth/token/refresh/` : '/api/auth/token/refresh/';
+          const refreshRes = await fetch(refreshUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh: refreshToken }),
@@ -108,7 +126,7 @@ class ApiClient {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
-  public post<T>(endpoint: string, body?: any, options?: RequestInit) {
+  public post<T>(endpoint: string, body?: unknown, options?: RequestInit) {
     return this.request<T>(endpoint, {
       ...options,
       method: 'POST',
@@ -116,7 +134,7 @@ class ApiClient {
     });
   }
 
-  public put<T>(endpoint: string, body?: any, options?: RequestInit) {
+  public put<T>(endpoint: string, body?: unknown, options?: RequestInit) {
     return this.request<T>(endpoint, {
       ...options,
       method: 'PUT',
@@ -126,10 +144,6 @@ class ApiClient {
 
   public delete<T>(endpoint: string, options?: RequestInit) {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
-  }
-
-  public getBaseUrl() {
-    return API_BASE_URL;
   }
 }
 
