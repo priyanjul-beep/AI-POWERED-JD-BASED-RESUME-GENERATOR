@@ -634,24 +634,40 @@ class ResumePdfView(APIView):
     authentication_classes = (QueryParamOrHeaderJWTAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get(self, request, pk):
+    def _render_pdf(self, request, pk):
         generation = get_object_or_404(ResumeGeneration, id=pk, user=request.user)
-        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or 'general').lower()
+        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or (request.data.get('mode') if isinstance(getattr(request, 'data', None), dict) else None) or 'general').lower()
+        version_param = request.query_params.get('version') or request.GET.get('version') or (request.data.get('version') if isinstance(getattr(request, 'data', None), dict) else None)
 
-        current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+        if version_param and str(version_param).isdigit():
+            current_version = generation.versions.filter(version_number=int(version_param)).first()
+        else:
+            current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+
         if not current_version:
             raise Http404("No resume content found.")
 
-        resume_content = current_version.structured_resume_data
-        if view_mode == 'tailored':
-            from services.matching.tailored_filter import filter_resume_for_jd
-            jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
-            resume_content = filter_resume_for_jd(resume_content, jd_analysis)
+        # If client passes explicit snapshot resume_data, use it directly (100% verified copy)
+        explicit_resume_data = request.data.get('resume_data') if isinstance(getattr(request, 'data', None), dict) else None
+        if explicit_resume_data and isinstance(explicit_resume_data, dict):
+            resume_content = explicit_resume_data
+        else:
+            resume_content = current_version.structured_resume_data
+            if view_mode == 'tailored':
+                from services.matching.tailored_filter import filter_resume_for_jd
+                jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
+                resume_content = filter_resume_for_jd(resume_content, jd_analysis)
 
         pdf_bytes = generate_ats_pdf(resume_content, page_format='ONE_PAGE')
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = f'inline; filename="resume_{view_mode}_preview.pdf"'
+        response['Content-Disposition'] = f'inline; filename="resume_{view_mode}_v{current_version.version_number}.pdf"'
         return response
+
+    def get(self, request, pk):
+        return self._render_pdf(request, pk)
+
+    def post(self, request, pk):
+        return self._render_pdf(request, pk)
 
 
 class ResumeDownloadView(APIView):
@@ -659,19 +675,29 @@ class ResumeDownloadView(APIView):
     authentication_classes = (QueryParamOrHeaderJWTAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get(self, request, pk):
+    def _render_download(self, request, pk):
         generation = get_object_or_404(ResumeGeneration, id=pk, user=request.user)
-        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or 'general').lower()
+        view_mode = (request.query_params.get('mode') or request.GET.get('mode') or (request.data.get('mode') if isinstance(getattr(request, 'data', None), dict) else None) or 'general').lower()
+        version_param = request.query_params.get('version') or request.GET.get('version') or (request.data.get('version') if isinstance(getattr(request, 'data', None), dict) else None)
 
-        current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+        if version_param and str(version_param).isdigit():
+            current_version = generation.versions.filter(version_number=int(version_param)).first()
+        else:
+            current_version = generation.versions.filter(version_number=generation.current_version_number).first()
+
         if not current_version:
             raise Http404("No resume content found.")
 
-        resume_content = current_version.structured_resume_data
-        if view_mode == 'tailored':
-            from services.matching.tailored_filter import filter_resume_for_jd
-            jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
-            resume_content = filter_resume_for_jd(resume_content, jd_analysis)
+        # If client passes explicit snapshot resume_data, use it directly (100% verified copy)
+        explicit_resume_data = request.data.get('resume_data') if isinstance(getattr(request, 'data', None), dict) else None
+        if explicit_resume_data and isinstance(explicit_resume_data, dict):
+            resume_content = explicit_resume_data
+        else:
+            resume_content = current_version.structured_resume_data
+            if view_mode == 'tailored':
+                from services.matching.tailored_filter import filter_resume_for_jd
+                jd_analysis = generation.job_description.parsed_analysis if generation.job_description else {}
+                resume_content = filter_resume_for_jd(resume_content, jd_analysis)
 
         pdf_bytes = generate_ats_pdf(resume_content, page_format='ONE_PAGE')
 
@@ -684,9 +710,15 @@ class ResumeDownloadView(APIView):
             candidate_name=candidate_name,
             company_name=generation.target_company or "company",
             target_role=f"{generation.target_role}_{view_mode}",
-            version_number=generation.current_version_number
+            version_number=current_version.version_number
         )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{norm_filename}"'
         return response
+
+    def get(self, request, pk):
+        return self._render_download(request, pk)
+
+    def post(self, request, pk):
+        return self._render_download(request, pk)

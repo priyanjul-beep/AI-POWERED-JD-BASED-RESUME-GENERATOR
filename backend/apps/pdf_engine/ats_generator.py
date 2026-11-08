@@ -16,6 +16,26 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from pypdf import PdfReader
 
+def to_reportlab_xml(text: Any) -> str:
+    """
+    Normalizes text for ReportLab Paragraph XML parsing:
+    1. Escapes standalone '&' to '&amp;' (preserving valid XML entities).
+    2. Converts markdown bold syntax (**text** or __text__) to <b>text</b>.
+    3. Converts markdown italics (*text* or _text_) if present.
+    """
+    if text is None:
+        return ""
+    if not isinstance(text, str):
+        text = str(text)
+    
+    # Escape standalone '&' that aren't already xml entities
+    text = re.sub(r'&(?!(amp|bull|ndash|mdash|lt|gt|quot|apos|#\d+);)', '&amp;', text)
+    # Convert **bold** and __bold__ to <b>bold</b>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
+    return text
+
+
 def normalize_filename(
     candidate_name: str,
     company_name: str,
@@ -172,20 +192,20 @@ def _build_pdf_stream(
     # 1. HEADER
     header = resume_data.get('header', {})
     full_name = header.get('full_name') or 'Candidate Name'
-    story.append(Paragraph(full_name, name_style))
+    story.append(Paragraph(to_reportlab_xml(full_name), name_style))
 
     headline = header.get('headline')
     if headline:
         story.append(Spacer(1, 1))
-        story.append(Paragraph(headline, headline_style))
+        story.append(Paragraph(to_reportlab_xml(headline), headline_style))
 
     contact_parts = []
     if header.get('email'):
-        contact_parts.append(header['email'])
+        contact_parts.append(to_reportlab_xml(header['email']))
     if header.get('phone'):
-        contact_parts.append(header['phone'])
+        contact_parts.append(to_reportlab_xml(header['phone']))
     if header.get('location'):
-        contact_parts.append(header['location'])
+        contact_parts.append(to_reportlab_xml(header['location']))
     if header.get('linkedin_url'):
         contact_parts.append(f'<font color="#2563EB"><u><a href="{header["linkedin_url"]}">LinkedIn</a></u></font>')
     if header.get('github_url'):
@@ -205,7 +225,7 @@ def _build_pdf_stream(
     summary = resume_data.get('summary')
     if summary:
         add_section_header("Professional Summary")
-        story.append(Paragraph(summary, body_style))
+        story.append(Paragraph(to_reportlab_xml(summary), body_style))
         story.append(Spacer(1, spacer_large))
 
     # 3. TECHNICAL SKILLS
@@ -223,24 +243,25 @@ def _build_pdf_stream(
             for label, items in categories:
                 if items:
                     line = f"<b>{label}:</b> {', '.join(items)}"
-                    story.append(Paragraph(line, body_style))
+                    story.append(Paragraph(to_reportlab_xml(line), body_style))
                     story.append(Spacer(1, 0.8))
         elif isinstance(skills, list):
-            story.append(Paragraph(", ".join(skills), body_style))
+            story.append(Paragraph(to_reportlab_xml(", ".join(skills)), body_style))
         story.append(Spacer(1, spacer_large - 1))
 
-    # 4. WORK EXPERIENCE (Render ALL work experiences and ALL bullet points)
-    work_exps = resume_data.get('work_experience', [])
+    # 4. WORK EXPERIENCE (Render ALL work experiences and ALL bullet points + technologies)
+    work_exps = resume_data.get('work_experience') or resume_data.get('experiences') or resume_data.get('experience', [])
     if work_exps:
         add_section_header("Work Experience")
         for exp in work_exps:
-            title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}"
+            techs = ", ".join(exp.get('technologies', []))
+            title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}" + (f" | <i>{techs}</i>" if techs else "")
             date_text = f"{exp.get('start_date', '')} &ndash; {exp.get('end_date', 'Present')}"
             loc_text = exp.get('location', '')
             right_meta = f"{loc_text} | {date_text}" if loc_text else date_text
 
             header_table = Table(
-                [[Paragraph(title_text, item_title_style), Paragraph(right_meta, item_sub_style)]],
+                [[Paragraph(to_reportlab_xml(title_text), item_title_style), Paragraph(to_reportlab_xml(right_meta), item_sub_style)]],
                 colWidths=[5.4 * inch, 2.2 * inch]
             )
             header_table.setStyle(TableStyle([
@@ -256,13 +277,13 @@ def _build_pdf_stream(
 
             bullets = exp.get('bullet_points', [])
             for b in bullets:
-                story.append(Paragraph(f"&bull; {b}", bullet_style))
+                story.append(Paragraph(f"&bull; {to_reportlab_xml(b)}", bullet_style))
 
             story.append(Spacer(1, spacer_small))
         story.append(Spacer(1, spacer_large - 1))
 
-    # 5. KEY PROJECTS (Render ALL projects and ALL highlights + Clickable Links)
-    projects = resume_data.get('projects', [])
+    # 5. KEY PROJECTS (Render ALL projects, description, ALL highlights + Clickable Links)
+    projects = resume_data.get('projects') or resume_data.get('key_projects', [])
     if projects:
         add_section_header("Key Projects")
         for proj in projects:
@@ -282,7 +303,7 @@ def _build_pdf_stream(
             role_text = proj.get('role', '')
 
             header_table = Table(
-                [[Paragraph(title_text, item_title_style), Paragraph(role_text, item_sub_style)]],
+                [[Paragraph(to_reportlab_xml(title_text), item_title_style), Paragraph(to_reportlab_xml(role_text), item_sub_style)]],
                 colWidths=[5.6 * inch, 2.0 * inch]
             )
             header_table.setStyle(TableStyle([
@@ -296,12 +317,13 @@ def _build_pdf_stream(
             ]))
             story.append(header_table)
 
-            if proj.get('description') and not is_one_page:
-                story.append(Paragraph(proj['description'], body_style))
+            if proj.get('description'):
+                story.append(Paragraph(to_reportlab_xml(proj['description']), body_style))
+                story.append(Spacer(1, 0.8))
 
             highlights = proj.get('highlights', [])
             for h in highlights:
-                story.append(Paragraph(f"&bull; {h}", bullet_style))
+                story.append(Paragraph(f"&bull; {to_reportlab_xml(h)}", bullet_style))
 
             story.append(Spacer(1, spacer_small))
         story.append(Spacer(1, spacer_large - 1))
@@ -320,7 +342,7 @@ def _build_pdf_stream(
             date_text = f"{edu.get('start_date', '')} &ndash; {edu.get('end_date', '')}".strip(" –-")
 
             edu_table = Table(
-                [[Paragraph(left_text, body_style), Paragraph(date_text, item_sub_style)]],
+                [[Paragraph(to_reportlab_xml(left_text), body_style), Paragraph(to_reportlab_xml(date_text), item_sub_style)]],
                 colWidths=[5.8 * inch, 1.8 * inch]
             )
             edu_table.setStyle(TableStyle([
@@ -347,7 +369,7 @@ def _build_pdf_stream(
         add_section_header("Achievements & Profiles")
         for item in achievements_coding:
             if isinstance(item, str) and item.strip():
-                story.append(Paragraph(f"&bull; {item.strip()}", bullet_style))
+                story.append(Paragraph(f"&bull; {to_reportlab_xml(item.strip())}", bullet_style))
 
     doc.build(story)
     return buf.getvalue()

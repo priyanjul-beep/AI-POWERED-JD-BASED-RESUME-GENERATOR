@@ -201,13 +201,20 @@ export default function ResumeReviewPage() {
   const handlePreviewPdf = async () => {
     setIsPreviewingPdf(true);
     try {
-      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}`);
+      const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
+        ? currentVersion.tailored_resume_data
+        : currentVersion?.structured_resume_data;
+
+      const blob = await api.post<Blob>(
+        `/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}&version=${selectedVersionNum}`,
+        { resume_data: activeResumeData }
+      );
       const blobUrl = window.URL.createObjectURL(blob);
       window.open(blobUrl, '_blank');
     } catch (err: unknown) {
       console.warn('Blob preview failed, falling back to tokenized URL:', err);
       const token = api.getAccessToken();
-      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}${token ? `&token=${token}` : ''}`;
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}&version=${selectedVersionNum}${token ? `&token=${token}` : ''}`;
       window.open(directUrl, '_blank');
     } finally {
       setIsPreviewingPdf(false);
@@ -218,7 +225,14 @@ export default function ResumeReviewPage() {
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
     try {
-      const blob = await api.get<Blob>(`/api/resume-generations/${generationId}/download/?mode=${resumeMode}`);
+      const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
+        ? currentVersion.tailored_resume_data
+        : currentVersion?.structured_resume_data;
+
+      const blob = await api.post<Blob>(
+        `/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}`,
+        { resume_data: activeResumeData }
+      );
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
@@ -231,7 +245,7 @@ export default function ResumeReviewPage() {
     } catch (err: unknown) {
       console.warn('Blob download failed, falling back to tokenized URL:', err);
       const token = api.getAccessToken();
-      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}${token ? `&token=${token}` : ''}`;
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}${token ? `&token=${token}` : ''}`;
       const fallbackLink = document.createElement('a');
       fallbackLink.href = directUrl;
       const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;

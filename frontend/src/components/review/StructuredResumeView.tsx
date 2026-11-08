@@ -95,6 +95,22 @@ export default function StructuredResumeView({
     return '';
   };
 
+  const renderFormattedText = (text: string | null | undefined): React.ReactNode => {
+    if (!text) return null;
+    const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__)/g);
+    return parts.map((part, index) => {
+      if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) {
+        const boldText = part.slice(2, -2);
+        return (
+          <strong key={index} className="font-bold text-white tracking-wide">
+            {boldText}
+          </strong>
+        );
+      }
+      return <React.Fragment key={index}>{part}</React.Fragment>;
+    });
+  };
+
   return (
     <div className="rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden">
       {/* Top Header / View Toggle */}
@@ -256,7 +272,7 @@ export default function StructuredResumeView({
                 Professional Summary
               </h3>
               <p className={`text-sm text-slate-300 leading-relaxed rounded p-1 ${getHighlightClass(currentResume.summary)}`}>
-                {currentResume.summary}
+                {renderFormattedText(currentResume.summary)}
               </p>
             </section>
           )}
@@ -319,7 +335,7 @@ export default function StructuredResumeView({
                         {exp.location ? `${exp.location} | ` : ''}{exp.start_date} &ndash; {exp.end_date || 'Present'}
                       </div>
                     </div>
-                    {exp.technologies && exp.technologies.length > 0 && (
+                    {/* {exp.technologies && exp.technologies.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {exp.technologies.map((t, tIdx) => (
                           <span key={tIdx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
@@ -327,11 +343,11 @@ export default function StructuredResumeView({
                           </span>
                         ))}
                       </div>
-                    )}
+                    )} */}
                     <ul className="space-y-1 pl-4 list-disc text-xs text-slate-300">
                       {exp.bullet_points.map((b, bIdx) => (
                         <li key={bIdx} className={`leading-relaxed rounded ${getHighlightClass(b)}`}>
-                          {b}
+                          {renderFormattedText(b)}
                         </li>
                       ))}
                     </ul>
@@ -383,9 +399,9 @@ export default function StructuredResumeView({
                             </a>
                           )}
                         </div>
-                        <div className="text-xs text-slate-400 font-medium">
+                        {/* <div className="text-xs text-slate-400 font-medium">
                           {proj.role}
-                        </div>
+                        </div> */}
                       </div>
                       {proj.technologies && proj.technologies.length > 0 && (
                         <p className="text-[11px] text-indigo-300 italic">
@@ -393,13 +409,13 @@ export default function StructuredResumeView({
                         </p>
                       )}
                       {proj.description && (
-                        <p className="text-xs text-slate-300">{proj.description}</p>
+                        <p className="text-xs text-slate-300">{renderFormattedText(proj.description)}</p>
                       )}
                       {proj.highlights && proj.highlights.length > 0 && (
                         <ul className="space-y-1 pl-4 list-disc text-xs text-slate-300">
                           {proj.highlights.map((h, hIdx) => (
                             <li key={hIdx} className={`leading-relaxed rounded ${getHighlightClass(h)}`}>
-                              {h}
+                              {renderFormattedText(h)}
                             </li>
                           ))}
                         </ul>
@@ -461,7 +477,7 @@ export default function StructuredResumeView({
               <ul className="space-y-1.5 pl-4 list-disc text-xs text-slate-300">
                 {achievementsAndCoding.map((item, idx) => (
                   <li key={idx} className={`leading-relaxed rounded ${getHighlightClass(item)}`}>
-                    {item}
+                    {renderFormattedText(item)}
                   </li>
                 ))}
               </ul>
@@ -540,7 +556,7 @@ export default function StructuredResumeView({
                   <div className="mb-2 text-xs">
                     <span className="text-slate-400 font-medium">Original: </span>
                     <span className="text-slate-400 line-through bg-slate-800/60 px-1.5 py-0.5 rounded">
-                      {ch.original_content}
+                      {renderFormattedText(ch.original_content)}
                     </span>
                   </div>
                 )}
@@ -548,7 +564,7 @@ export default function StructuredResumeView({
                 <div className="mb-2 text-xs">
                   <span className="text-slate-300 font-medium">Updated: </span>
                   <span className="text-white font-medium bg-slate-900 px-1.5 py-0.5 rounded">
-                    {ch.updated_content}
+                    {renderFormattedText(ch.updated_content)}
                   </span>
                 </div>
 
@@ -679,11 +695,11 @@ export default function StructuredResumeView({
                       ? 'bg-slate-900/90 border-emerald-500/30 text-emerald-100 font-medium'
                       : 'bg-slate-900 border-slate-800 text-slate-200 font-medium'
                   }`}>
-                    &ldquo;{item.proposed_text}&rdquo;
+                    &ldquo;{renderFormattedText(item.proposed_text)}&rdquo;
                   </div>
 
                   <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                    <span><strong>Reason:</strong> {item.reason}</span>
+                    <span><strong>Reason:</strong> {renderFormattedText(item.reason)}</span>
                   </div>
                 </div>
               );
