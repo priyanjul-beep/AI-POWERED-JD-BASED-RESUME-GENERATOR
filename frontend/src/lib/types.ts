@@ -116,6 +116,8 @@ export interface ResumeProject {
   title: string;
   role?: string;
   url?: string;
+  github_url?: string;
+  demo_url?: string;
   technologies: string[];
   description: string;
   highlights: string[];
@@ -188,6 +190,10 @@ export interface StructuredResumeData {
   projects: ResumeProject[];
   education: ResumeEducation[];
   certifications: ResumeCertification[];
+  achievements_and_coding?: string[];
+  achievements?: string[];
+  coding_profiles?: string[];
+  hackathons?: string[];
   changes_applied: ChangeDetail[];
   evidence_gaps: (EvidenceGapItem | string)[];
   requirement_mappings?: RequirementMapping[];

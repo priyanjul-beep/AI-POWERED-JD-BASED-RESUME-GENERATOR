@@ -37,7 +37,7 @@ export default function GenerateResumePage() {
   const router = useRouter();
 
   // Single-Step Form State: Target Job Details
-  const [targetRole, setTargetRole] = useState('Java Developer');
+  const [targetRole, setTargetRole] = useState('Software Developer 1');
   const [targetCompany, setTargetCompany] = useState('');
   
   // Job Description Input: Direct Text or File Upload

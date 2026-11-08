@@ -1,24 +1,32 @@
 'use client';
 
 import React, { useState } from 'react';
-import { StructuredResumeData, ChangeDetail, ProposedContentItem } from '@/lib/types';
 import { 
-  Building2, 
-  Calendar, 
-  MapPin, 
+  StructuredResumeData, 
+  ChangeDetail, 
+  ProposedContentItem,
+  ResumeWorkExperience,
+  ResumeProject
+} from '@/lib/types';
+import { 
   Sparkles, 
-  GraduationCap, 
   Award, 
-  CheckCircle, 
-  HelpCircle,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
   Lightbulb,
-  AlertCircle,
-  ShieldCheck,
-  Check
+  Check,
+  Code,
+  Globe,
+  Trophy
 } from 'lucide-react';
+
+interface ExtendedResumeData extends StructuredResumeData {
+  experiences?: ResumeWorkExperience[];
+  experience?: ResumeWorkExperience[];
+  key_projects?: ResumeProject[];
+  achievements_hackathons_coding?: string[];
+  coding_and_hackathons?: string[];
+  achievements_and_hackathons?: string[];
+}
 
 interface StructuredResumeViewProps {
   resume: StructuredResumeData;
@@ -28,9 +36,20 @@ interface StructuredResumeViewProps {
 export default function StructuredResumeView({ resume, changes = [] }: StructuredResumeViewProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'audit' | 'proposed'>('preview');
 
+  const extResume = resume as ExtendedResumeData;
   const proposedItems: ProposedContentItem[] = resume.proposed_content || [];
-  const workExperiences = resume.work_experience || (resume as any).experiences || (resume as any).experience || [];
-  const projectsList = resume.projects || (resume as any).key_projects || [];
+  const workExperiences = resume.work_experience || extResume.experiences || extResume.experience || [];
+  const projectsList = resume.projects || extResume.key_projects || [];
+  const achievementsAndCoding: string[] = 
+    resume.achievements_and_coding ||
+    extResume.achievements_hackathons_coding ||
+    extResume.coding_and_hackathons ||
+    extResume.achievements_and_hackathons ||
+    [
+      ...(resume.achievements || []),
+      ...(resume.coding_profiles || []),
+      ...(resume.hackathons || [])
+    ];
 
   // Map of text snippets to change detail for inline visual cueing
   const changeMap = new Map<string, ChangeDetail>();
@@ -239,40 +258,65 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
                 Key Projects
               </h3>
               <div className="space-y-4">
-                {projectsList.map((proj, idx) => (
-                  <div key={idx} className="space-y-1.5">
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <div className="text-sm font-bold text-white flex items-center gap-1.5">
-                        {proj.title}
-                        {proj.url && (
-                          <a href={proj.url} target="_blank" rel="noreferrer" className="text-indigo-400 hover:text-indigo-300">
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        )}
+                {projectsList.map((proj, idx) => {
+                  const projectLink = proj.github_url || proj.url;
+                  const demoLink = proj.demo_url;
+                  return (
+                    <div key={idx} className="space-y-1.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-bold text-white flex flex-wrap items-center gap-2">
+                          <span>{proj.title}</span>
+                          {projectLink && (
+                            <a
+                              href={projectLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 hover:border-indigo-400 transition-colors"
+                              title="Project Repository / Source Link"
+                            >
+                              <Code className="w-3 h-3 text-indigo-400" />
+                              <span>Project Link</span>
+                              <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                            </a>
+                          )}
+                          {demoLink && (
+                            <a
+                              href={demoLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 hover:border-emerald-400 transition-colors"
+                              title="Live Demo Link"
+                            >
+                              <Globe className="w-3 h-3 text-emerald-400" />
+                              <span>Live Demo</span>
+                              <ExternalLink className="w-2.5 h-2.5 opacity-70" />
+                            </a>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 font-medium">
+                          {proj.role}
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-400 font-medium">
-                        {proj.role}
-                      </div>
+                      {proj.technologies && proj.technologies.length > 0 && (
+                        <p className="text-[11px] text-indigo-300 italic">
+                          Technologies: {proj.technologies.join(', ')}
+                        </p>
+                      )}
+                      {proj.description && (
+                        <p className="text-xs text-slate-300">{proj.description}</p>
+                      )}
+                      {proj.highlights && proj.highlights.length > 0 && (
+                        <ul className="space-y-1 pl-4 list-disc text-xs text-slate-300">
+                          {proj.highlights.map((h, hIdx) => (
+                            <li key={hIdx} className={`leading-relaxed rounded ${getHighlightClass(h)}`}>
+                              {h}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                    {proj.technologies && proj.technologies.length > 0 && (
-                      <p className="text-[11px] text-indigo-300 italic">
-                        Technologies: {proj.technologies.join(', ')}
-                      </p>
-                    )}
-                    {proj.description && (
-                      <p className="text-xs text-slate-300">{proj.description}</p>
-                    )}
-                    {proj.highlights && proj.highlights.length > 0 && (
-                      <ul className="space-y-1 pl-4 list-disc text-xs text-slate-300">
-                        {proj.highlights.map((h, hIdx) => (
-                          <li key={hIdx} className={`leading-relaxed rounded ${getHighlightClass(h)}`}>
-                            {h}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
@@ -314,6 +358,23 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+
+          {/* Achievements, Hackathons & Coding Profiles */}
+          {achievementsAndCoding.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-400 border-b border-indigo-500/20 pb-1 flex items-center gap-1.5">
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <span>Achievements, Hackathons & Coding Profiles</span>
+              </h3>
+              <ul className="space-y-1.5 pl-4 list-disc text-xs text-slate-300">
+                {achievementsAndCoding.map((item, idx) => (
+                  <li key={idx} className={`leading-relaxed rounded ${getHighlightClass(item)}`}>
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
         </div>
@@ -431,7 +492,7 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
               <Check className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
               <span>
                 <strong>How to Confirm:</strong> If you did perform any of these activities, click the <strong>NO (Needs Revision)</strong> button in the review sidebar and write:
-                <em> "Please confirm and include the proposed bullet for [Requirement] into my work experience."</em>
+                <em> &quot;Please confirm and include the proposed bullet for [Requirement] into my work experience.&quot;</em>
               </span>
             </div>
           </div>

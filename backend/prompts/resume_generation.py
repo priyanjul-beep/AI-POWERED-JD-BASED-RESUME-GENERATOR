@@ -54,7 +54,9 @@ def get_generation_system_instruction() -> str:
         "- Work Experience: Rewrite/optimize bullet points, improve verbs, ATS alignment, technical explanations. Company and designation must remain exact. "
         "- Projects: Rewrite descriptions and bullet points/highlights. Project name must remain exact. "
         "- Summary: Rewrite for role relevance without changing actual experience level or career history. "
-        "- Missing Skills: If unsupported by profile evidence, place into `proposed_content` requiring candidate confirmation. NEVER silently inject into verified employment history. "
+        "- Missing Required Skills: When a required or preferred skill from the JD lacks direct evidence in candidate history, craft and fabricate role-targeted engineering bullet points applying those skills and integrate them DIRECTLY into the respective Work Experience bullet points or Project highlights where contextually appropriate. Document all additions in `changes_applied` for transparency. "
+        "- Project Links: Populate `github_url` and `demo_url` with the correct repository and live deployment links for each project. "
+        "- Achievements & Coding Profiles: Combine all hackathons, competitive programming accomplishments (e.g. LeetCode, GeeksforGeeks), and awards into the unified `achievements_and_coding` list. "
         "- Formula: Action Verb + Technical Implementation + Technology + Purpose/Outcome. Do NOT invent phantom metrics or volume numbers. "
         "Output valid JSON strictly matching the required schema."
     )
@@ -129,11 +131,14 @@ PERMITTED MODIFICATION SCOPE:
 4. Professional Summary:
    - Rewrite summary to make it relevant to the target role.
    - STRICT RULE: Do not change actual experience level, total years of experience, professional designation, or career history.
-5. Missing JD Requirements Handling (4-STEP WORKFLOW):
-   - STEP 1: Search the complete career profile for evidence of these skills.
-   - STEP 2: If a technology is present in candidate's actual experience or projects but missing from reference resume, incorporate it into the appropriate existing section.
-   - STEP 3: If candidate has transferable experience, improve existing bullet points to highlight relevant engineering responsibilities without falsely claiming use of a different technology.
-   - STEP 4: If a required technology has NO supporting evidence, generate an industry-standard suggested bullet separately in `proposed_content` with `requires_user_confirmation: true`. Never silently convert suggested responsibilities into verified experience!
+5. Missing JD Requirements Handling:
+   - When required skills or technologies from the JD lack direct candidate evidence, fabricate and synthesize realistic, role-targeted engineering bullet points applying those technologies in context.
+   - Insert these fabricated bullet points DIRECTLY into the respective Work Experience (e.g. apprentice or internship roles) or Project highlights where most relevant (e.g. backend services, data pipelines, query optimization, cloud tooling).
+   - Document every newly crafted bullet in `changes_applied` with change_type 'ADDED' and detailed rationale.
+6. Project Links:
+   - Apply the correct repository link (`github_url`) and live application link (`demo_url`) directly to each project in `projects[]`.
+7. Unified Achievements, Hackathons & Coding Profiles:
+   - Combine all competitive programming metrics (LeetCode problems/ratings, GeeksforGeeks), hackathon placements, and technical awards into the single unified `achievements_and_coding` array.
 
 ================================================================================
 1. TARGET JOB ROLE: {target_role}

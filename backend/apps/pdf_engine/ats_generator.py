@@ -279,8 +279,18 @@ def generate_ats_pdf(
         projs_to_render = projects[:2] if (is_one_page and len(projects) > 2) else projects
         for proj in projs_to_render:
             proj_title = proj.get('title', '')
+            github_or_url = proj.get('github_url') or proj.get('url')
+            demo_url = proj.get('demo_url')
+            
+            links_part = []
+            if github_or_url:
+                links_part.append(f'<font color="#2563EB"><u><a href="{github_or_url}">Project Link</a></u></font>')
+            if demo_url:
+                links_part.append(f'<font color="#059669"><u><a href="{demo_url}">Live Demo</a></u></font>')
+            
+            links_str = f" [{' | '.join(links_part)}]" if links_part else ""
             techs = ", ".join(proj.get('technologies', []))
-            title_text = f"<b>{proj_title}</b>" + (f" | <i>{techs}</i>" if techs else "")
+            title_text = f"<b>{proj_title}</b>{links_str}" + (f" | <i>{techs}</i>" if techs else "")
             role_text = proj.get('role', '')
 
             header_table = Table(
@@ -343,6 +353,22 @@ def generate_ats_pdf(
             if cert.get('issue_date'):
                 cert_name += f" ({cert['issue_date']})"
             story.append(Paragraph(cert_name, bullet_style))
+        story.append(Spacer(1, spacer_large - 3))
+
+    # 8. ACHIEVEMENTS, HACKATHONS & CODING PROFILES
+    achievements_coding = (
+        resume_data.get('achievements_and_coding')
+        or resume_data.get('achievements_hackathons_coding')
+        or resume_data.get('coding_and_hackathons')
+        or resume_data.get('achievements_and_hackathons')
+        or (resume_data.get('achievements', []) + resume_data.get('coding_profiles', []) + resume_data.get('hackathons', []))
+    )
+    if achievements_coding:
+        add_section_header("Achievements, Hackathons & Coding Profiles")
+        for item in achievements_coding:
+            if isinstance(item, str) and item.strip():
+                story.append(Paragraph(f"&bull; {item.strip()}", bullet_style))
+        story.append(Spacer(1, spacer_large - 3))
 
     # Build PDF
     doc.build(story)

@@ -69,7 +69,8 @@ def build_baseline_from_profile_and_resume(
         "work_experience": [],
         "projects": [],
         "education": [],
-        "certifications": []
+        "certifications": [],
+        "achievements_and_coding": []
     }
 
     # Ingest from profile_data
@@ -102,6 +103,8 @@ def build_baseline_from_profile_and_resume(
                 "title": (proj.get("title") or "").strip(),
                 "role": (proj.get("role") or "").strip(),
                 "url": (proj.get("url") or "").strip(),
+                "github_url": (proj.get("github_url") or "").strip(),
+                "demo_url": (proj.get("demo_url") or "").strip(),
                 "technologies": proj.get("technologies") or [],
                 "description": (proj.get("description") or "").strip(),
                 "highlights": proj.get("highlights") or []
@@ -179,6 +182,8 @@ def build_baseline_from_profile_and_resume(
                     "title": (proj.get("title") or "").strip(),
                     "role": (proj.get("role") or "").strip(),
                     "url": (proj.get("url") or "").strip(),
+                    "github_url": (proj.get("github_url") or "").strip(),
+                    "demo_url": (proj.get("demo_url") or "").strip(),
                     "technologies": proj.get("technologies") or [],
                     "description": (proj.get("description") or "").strip(),
                     "highlights": proj.get("highlights") or []
@@ -204,6 +209,16 @@ def build_baseline_from_profile_and_resume(
                     "issue_date": (cert.get("issue_date") or "").strip(),
                     "credential_id": (cert.get("credential_id") or "").strip()
                 })
+
+    # Ingest achievements_and_coding if present in profile or reference resume
+    ach_list = (
+        (profile_data.get("achievements_and_coding") if profile_data else None)
+        or (profile_data.get("achievements") if profile_data else None)
+        or (reference_resume_data.get("achievements_and_coding") if isinstance(reference_resume_data, dict) else None)
+        or (reference_resume_data.get("achievements") if isinstance(reference_resume_data, dict) else None)
+    )
+    if isinstance(ach_list, list):
+        baseline["achievements_and_coding"] = [str(x).strip() for x in ach_list if str(x).strip()]
 
     return baseline
 
@@ -458,6 +473,8 @@ def enforce_structural_identity(
                     "title": base_proj["title"],  # NEVER CHANGE ORIGINAL PROJECT NAME
                     "role": best_gen.get("role") or base_proj.get("role") or "",
                     "url": base_proj.get("url") or best_gen.get("url") or "",
+                    "github_url": best_gen.get("github_url") or base_proj.get("github_url") or "",
+                    "demo_url": best_gen.get("demo_url") or base_proj.get("demo_url") or "",
                     "technologies": best_gen.get("technologies") or base_proj.get("technologies") or [],
                     "description": best_gen.get("description") or base_proj.get("description") or "",
                     "highlights": best_gen.get("highlights") or base_proj.get("highlights") or []
@@ -552,7 +569,17 @@ def enforce_structural_identity(
                     existing.append(b_skill)
             sanitized["skills"][cat] = existing
 
-    # 7. SANITIZE AUDIT TRAIL (changes_applied)
+    # 7. ENFORCE ACHIEVEMENTS, HACKATHONS & CODING PROFILES
+    ach_coding = (
+        sanitized.get("achievements_and_coding")
+        or sanitized.get("achievements")
+        or baseline.get("achievements_and_coding")
+        or []
+    )
+    if ach_coding:
+        sanitized["achievements_and_coding"] = ach_coding
+
+    # 8. SANITIZE AUDIT TRAIL (changes_applied)
     # "Do not highlight changes to immutable fields because those fields must never change."
     raw_changes = sanitized.get("changes_applied") or []
     clean_changes = []

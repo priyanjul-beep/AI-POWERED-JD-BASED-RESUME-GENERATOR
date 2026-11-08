@@ -41,6 +41,8 @@ class ProjectItem(BaseModel):
     title: str
     role: Optional[str] = ""
     url: Optional[str] = ""
+    github_url: Optional[str] = ""
+    demo_url: Optional[str] = ""
     technologies: List[str] = Field(default_factory=list)
     description: str = ""
     highlights: List[str] = Field(default_factory=list)
@@ -92,6 +94,7 @@ class StructuredResumeSchema(BaseModel):
     projects: List[ProjectItem] = Field(default_factory=list)
     education: List[EducationItem] = Field(default_factory=list)
     certifications: List[CertificationItem] = Field(default_factory=list)
+    achievements_and_coding: List[str] = Field(default_factory=list, description="Combined Achievements, Hackathons, and Competitive Coding Profiles")
     changes_applied: List[ChangeDetail] = Field(default_factory=list)
     evidence_gaps: List[Union[EvidenceGapDetail, str]] = Field(default_factory=list, description="JD requirements without verified supporting evidence")
     requirement_mappings: Optional[List[RequirementMappingItem]] = Field(default_factory=list)
