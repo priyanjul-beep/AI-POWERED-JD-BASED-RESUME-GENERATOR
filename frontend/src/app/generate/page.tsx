@@ -56,12 +56,9 @@ export default function GenerateResumePage() {
   const [experienceLevel, setExperienceLevel] = useState('INTERNSHIP');
   const [additionalDetails, setAdditionalDetails] = useState('');
 
-  // Drag & drop visual state
-  const [isJdDragging, setIsJdDragging] = useState(false);
-  const [isResumeDragging, setIsResumeDragging] = useState(false);
-
   // Status & Feedback States
   const [submitting, setSubmitting] = useState(false);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [isUploadPhase, setIsUploadPhase] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -104,6 +101,8 @@ Requirements:
   const handleCancel = async () => {
     // 1. Immediately flag cancellation
     isCancelledRef.current = true;
+    activeRequestIdRef.current = null;
+    setActiveRequestId(null);
 
     // 2. Abort any in-flight HTTP request
     if (abortControllerRef.current) {
@@ -144,6 +143,7 @@ Requirements:
     // Set up request lifecycle and AbortController
     const requestId = crypto.randomUUID();
     activeRequestIdRef.current = requestId;
+    setActiveRequestId(requestId);
     isCancelledRef.current = false;
 
     const controller = new AbortController();
@@ -246,6 +246,11 @@ Requirements:
       // Brief transition delay so the user sees the completed state before review page loads
       setTimeout(() => {
         if (!isCancelledRef.current && activeRequestIdRef.current === requestId) {
+          setSubmitting(false);
+          setIsSuccess(false);
+          setIsUploadPhase(false);
+          activeRequestIdRef.current = null;
+          setActiveRequestId(null);
           router.push(`/review/${generationResult.id}`);
         }
       }, 500);
@@ -258,6 +263,8 @@ Requirements:
 
       if (isAbort) {
         // Handled cleanly by cancel flow
+        activeRequestIdRef.current = null;
+        setActiveRequestId(null);
         setSubmitting(false);
         setIsUploadPhase(false);
         setIsSuccess(false);
@@ -268,6 +275,8 @@ Requirements:
       // Real error occurred
       const message = err instanceof Error ? err.message : 'Failed to analyze and generate resume. Please try again.';
       setError(message);
+      activeRequestIdRef.current = null;
+      setActiveRequestId(null);
       setSubmitting(false);
       setIsUploadPhase(false);
       setIsSuccess(false);
@@ -279,17 +288,19 @@ Requirements:
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10 w-full space-y-8 animate-in fade-in duration-200">
       
-      {/* Full-screen Modern AI Analysis Loader Overlay */}
-      <AiAnalysisLoader
-        isOpen={submitting}
-        targetRole={targetRole || 'Target Role'}
-        targetCompany={targetCompany}
-        hasJdFile={jdMethod === 'upload' && !!jdFile}
-        hasResumeFile={!!resumeFile}
-        isUploadPhase={isUploadPhase}
-        isSuccess={isSuccess}
-        onCancel={handleCancel}
-      />
+      {/* Full-screen Modern AI Analysis Loader Overlay - Only active when request is in-flight */}
+      {submitting && !!activeRequestId && (
+        <AiAnalysisLoader
+          isOpen={submitting}
+          targetRole={targetRole || 'Target Role'}
+          targetCompany={targetCompany}
+          hasJdFile={jdMethod === 'upload' && !!jdFile}
+          hasResumeFile={!!resumeFile}
+          isUploadPhase={isUploadPhase}
+          isSuccess={isSuccess}
+          onCancel={handleCancel}
+        />
+      )}
 
       {/* Page Header */}
       <div className="text-center space-y-2.5">

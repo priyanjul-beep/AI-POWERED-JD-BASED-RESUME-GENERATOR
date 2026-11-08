@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import confetti from 'canvas-confetti';
 import { useAuth } from '@/lib/auth';
@@ -8,8 +8,7 @@ import { api } from '@/lib/api';
 import { 
   ResumeGeneration, 
   ResumeVersion, 
-  StructuredResumeData, 
-  ResumeMatchReport 
+  ProposedContentItem
 } from '@/lib/types';
 import StructuredResumeView from '@/components/review/StructuredResumeView';
 import ScoreMeter from '@/components/review/ScoreMeter';
@@ -17,16 +16,14 @@ import ApprovalModal from '@/components/review/ApprovalModal';
 import { 
   CheckCircle2, 
   XCircle, 
-  Send, 
   AlertOctagon, 
-  ArrowLeft, 
   Loader2, 
   Sparkles, 
   Download, 
   Eye, 
-  History,
   FileCheck2,
-  Clock
+  Clock,
+  History
 } from 'lucide-react';
 
 export default function ResumeReviewPage() {
@@ -45,6 +42,7 @@ export default function ResumeReviewPage() {
   const [userComment, setUserComment] = useState('');
   const [isRevising, setIsRevising] = useState(false);
   const [revisionError, setRevisionError] = useState('');
+  const [selectedProposedBullets, setSelectedProposedBullets] = useState<string[]>([]);
 
   // YES approval state
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
@@ -56,17 +54,7 @@ export default function ResumeReviewPage() {
   // Cancel state
   const [isCancelling, setIsCancelling] = useState(false);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-      return;
-    }
-    if (user && generationId) {
-      loadGeneration();
-    }
-  }, [user, authLoading, generationId]);
-
-  const loadGeneration = async () => {
+  const loadGeneration = useCallback(async () => {
     try {
       const data = await api.get<ResumeGeneration>(`/api/resume-generations/${generationId}/`);
       setGeneration(data);
@@ -80,18 +68,82 @@ export default function ResumeReviewPage() {
         setFinalPdfUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/pdf/`);
         setFinalDownloadUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/download/`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [generationId]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (user && generationId) {
+      api.get<ResumeGeneration>(`/api/resume-generations/${generationId}/`)
+        .then((data) => {
+          if (ignore) return;
+          setGeneration(data);
+          setSelectedVersionNum(data.current_version_number);
+
+          const activeVer = data.versions.find(v => v.version_number === data.current_version_number) || data.versions[data.versions.length - 1];
+          setCurrentVersion(activeVer || null);
+
+          if (data.status === 'APPROVED') {
+            setIsFinalized(true);
+            setFinalPdfUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/pdf/`);
+            setFinalDownloadUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/download/`);
+          }
+        })
+        .catch((err: unknown) => {
+          console.error(err);
+        })
+        .finally(() => {
+          if (!ignore) {
+            setLoading(false);
+          }
+        });
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [user, authLoading, generationId, router]);
 
   const handleSelectVersion = (versionNum: number) => {
     if (!generation) return;
     setSelectedVersionNum(versionNum);
     const ver = generation.versions.find(v => v.version_number === versionNum);
-    if (ver) setCurrentVersion(ver);
+    if (ver) {
+      setCurrentVersion(ver);
+      setSelectedProposedBullets([]);
+    }
+  };
+
+  // Toggle Proposed Bullet Add / Revert into Feedback Box
+  const handleToggleProposedBullet = (item: ProposedContentItem) => {
+    const bulletKey = item.proposed_text.trim();
+    const isAlreadySelected = selectedProposedBullets.includes(bulletKey);
+    const formattedLine = `• Confirm & include into ${item.target_section}: "${bulletKey}"`;
+
+    if (isAlreadySelected) {
+      setSelectedProposedBullets(prev => prev.filter(k => k !== bulletKey));
+      setUserComment(prev => {
+        const lines = prev.split('\n');
+        const remainingLines = lines.filter(line => !line.includes(bulletKey));
+        return remainingLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      });
+    } else {
+      setSelectedProposedBullets(prev => [...prev, bulletKey]);
+      setUserComment(prev => {
+        const trimmed = prev.trim();
+        if (!trimmed) {
+          return formattedLine;
+        }
+        return `${trimmed}\n\n${formattedLine}`;
+      });
+    }
   };
 
   // Human-in-the-Loop Step: Click NO
@@ -114,8 +166,10 @@ export default function ResumeReviewPage() {
       const newActive = updatedGen.versions.find(v => v.version_number === updatedGen.current_version_number);
       setCurrentVersion(newActive || null);
       setUserComment('');
-    } catch (err: any) {
-      setRevisionError(err.message || 'Failed to submit revision.');
+      setSelectedProposedBullets([]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit revision.';
+      setRevisionError(msg);
     } finally {
       setIsRevising(false);
     }
@@ -147,8 +201,9 @@ export default function ResumeReviewPage() {
       }
 
       await loadGeneration();
-    } catch (err: any) {
-      alert(err.message || 'Failed to finalize resume.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to finalize resume.';
+      alert(msg);
       throw err;
     }
   };
@@ -163,8 +218,9 @@ export default function ResumeReviewPage() {
     try {
       await api.post(`/api/resume-generations/${generationId}/cancel/`);
       router.push('/dashboard');
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel session.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to cancel session.';
+      alert(msg);
       setIsCancelling(false);
     }
   };
@@ -307,6 +363,8 @@ export default function ResumeReviewPage() {
           <StructuredResumeView
             resume={currentVersion.structured_resume_data}
             changes={currentVersion.change_analysis}
+            selectedProposedBullets={selectedProposedBullets}
+            onToggleProposedBullet={handleToggleProposedBullet}
           />
         </div>
 
@@ -336,15 +394,23 @@ export default function ResumeReviewPage() {
 
               {/* Instructions / Feedback Box */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">
-                  Instructions / Modification Notes (Required for NO)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Instructions / Modification Notes (Required for NO)
+                  </label>
+                  {selectedProposedBullets.length > 0 && (
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      {selectedProposedBullets.length} bullet{selectedProposedBullets.length > 1 ? 's' : ''} added
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={userComment}
                   onChange={(e) => setUserComment(e.target.value)}
-                  rows={3}
+                  rows={4}
                   disabled={isRevising}
-                  placeholder="e.g. 'The technical skills section needs more relevant skills.' or 'Add more Java-related keywords where supported by my experience.'"
+                  placeholder="e.g. 'The technical skills section needs more relevant skills.' or click '+ Add to Feedback' on any proposed bullet to validate it."
                   className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50"
                 />
               </div>

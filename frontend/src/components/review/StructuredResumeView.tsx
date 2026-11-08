@@ -16,7 +16,10 @@ import {
   Check,
   Code,
   Globe,
-  Trophy
+  Trophy,
+  Plus,
+  RotateCcw,
+  CheckCircle2
 } from 'lucide-react';
 
 interface ExtendedResumeData extends StructuredResumeData {
@@ -31,9 +34,16 @@ interface ExtendedResumeData extends StructuredResumeData {
 interface StructuredResumeViewProps {
   resume: StructuredResumeData;
   changes?: ChangeDetail[];
+  selectedProposedBullets?: string[];
+  onToggleProposedBullet?: (item: ProposedContentItem) => void;
 }
 
-export default function StructuredResumeView({ resume, changes = [] }: StructuredResumeViewProps) {
+export default function StructuredResumeView({ 
+  resume, 
+  changes = [],
+  selectedProposedBullets = [],
+  onToggleProposedBullet
+}: StructuredResumeViewProps) {
   const [activeTab, setActiveTab] = useState<'preview' | 'audit' | 'proposed'>('preview');
 
   const extResume = resume as ExtendedResumeData;
@@ -112,7 +122,12 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
               }`}
             >
               <Lightbulb className="w-3.5 h-3.5" />
-              Proposed Bullets ({proposedItems.length})
+              <span>Proposed Bullets ({proposedItems.length})</span>
+              {selectedProposedBullets.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-400 text-slate-950 font-bold">
+                  {selectedProposedBullets.length} added
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -126,7 +141,14 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
               <div className="flex items-center gap-2">
                 <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0" />
                 <span>
-                  <strong>{proposedItems.length} Proposed Industry Bullets</strong> are available for review. They have not been added to your factual resume history without confirmation.
+                  <strong>{proposedItems.length} Proposed Industry Bullets</strong> are available for review.
+                  {selectedProposedBullets.length > 0 ? (
+                    <span className="ml-1 text-emerald-300 font-bold">
+                      ({selectedProposedBullets.length} validated &amp; added to revision feedback)
+                    </span>
+                  ) : (
+                    <span> They have not been added to your factual resume history without confirmation.</span>
+                  )}
                 </span>
               </div>
               <button
@@ -480,52 +502,124 @@ export default function StructuredResumeView({ resume, changes = [] }: Structure
         /* Proposed Content & Suggestions View */
         <div className="p-6 space-y-5">
           <div className="p-4 rounded-xl bg-slate-950/90 border border-amber-500/30 space-y-2">
-            <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
-              <Lightbulb className="w-4 h-4 text-amber-400" />
-              Proposed Industry-Standard Bullets & Suggested Experience
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+                <Lightbulb className="w-4 h-4 text-amber-400" />
+                Proposed Industry-Standard Bullets &amp; Suggested Experience
+              </div>
+              {selectedProposedBullets.length > 0 && (
+                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1.5 shadow-sm">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  {selectedProposedBullets.length} Added to Feedback
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
               These role-specific responsibility bullets were formulated to match important JD requirements.
-              Because supporting evidence was not verified in your career records, they are held separately and will <strong>never be automatically published as factual employment</strong>.
+              Because supporting evidence was not verified in your career records, they are held separately and will <strong>never be automatically published as factual employment</strong> without your explicit confirmation.
             </p>
             <div className="text-[11px] text-indigo-300 bg-indigo-950/30 p-2.5 rounded border border-indigo-500/20 flex items-start gap-2 mt-2">
               <Check className="w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0" />
               <span>
-                <strong>How to Confirm:</strong> If you did perform any of these activities, click the <strong>NO (Needs Revision)</strong> button in the review sidebar and write:
-                <em> &quot;Please confirm and include the proposed bullet for [Requirement] into my work experience.&quot;</em>
+                <strong>One-Click Workflow:</strong> Click <strong>&quot;+ Add to Feedback&quot;</strong> on any bullet below to automatically validate it and queue it into your revision feedback box. Click <strong>&quot;Revert&quot;</strong> to remove it. When you click <strong>NO &bull; Revise with Feedback</strong> in the review sidebar, your resume will be regenerated incorporating these validated bullets.
               </span>
             </div>
           </div>
 
-          <div className="space-y-3">
-            {proposedItems.map((item, idx) => (
-              <div
-                key={idx}
-                className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3 text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold text-[10px]">
-                      Target: {item.target_section}
-                    </span>
-                    <span className="font-bold text-white text-xs">
-                      Requirement: {item.targeted_jd_requirement}
-                    </span>
-                  </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium">
-                    Requires User Confirmation
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 font-medium text-xs leading-relaxed">
-                  &ldquo;{item.proposed_text}&rdquo;
-                </div>
-
-                <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                  <span><strong>Reason:</strong> {item.reason}</span>
-                </div>
+          {selectedProposedBullets.length > 0 && (
+            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-2.5 text-xs text-emerald-200">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                <span>
+                  <strong>{selectedProposedBullets.length} bullet{selectedProposedBullets.length > 1 ? 's' : ''}</strong> validated and queued in your revision feedback box.
+                </span>
               </div>
-            ))}
+              <div className="text-[11px] text-slate-400">
+                Click &quot;NO &bull; Revise with Feedback&quot; to rebuild.
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {proposedItems.map((item, idx) => {
+              const isSelected = selectedProposedBullets.includes(item.proposed_text.trim());
+              return (
+                <div
+                  key={idx}
+                  onClick={() => onToggleProposedBullet?.(item)}
+                  className={`p-4 rounded-xl transition-all duration-200 cursor-pointer space-y-3 text-xs border ${
+                    isSelected
+                      ? 'bg-emerald-950/25 border-emerald-500/60 shadow-lg shadow-emerald-950/30 ring-1 ring-emerald-500/30'
+                      : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded font-semibold text-[10px] border ${
+                        isSelected
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
+                      }`}>
+                        Target: {item.target_section}
+                      </span>
+                      <span className="font-bold text-white text-xs">
+                        Requirement: {item.targeted_jd_requirement}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {isSelected ? (
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          Validated for Inclusion
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium">
+                          Requires User Confirmation
+                        </span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleProposedBullet?.(item);
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
+                          isSelected
+                            ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-rose-200 border border-rose-500/30'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <RotateCcw className="w-3.5 h-3.5 text-rose-300" />
+                            <span>Revert</span>
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="w-3.5 h-3.5 text-indigo-200" />
+                            <span>+ Add to Feedback</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={`p-3 rounded-lg border text-xs leading-relaxed transition-colors ${
+                    isSelected
+                      ? 'bg-slate-900/90 border-emerald-500/30 text-emerald-100 font-medium'
+                      : 'bg-slate-900 border-slate-800 text-slate-200 font-medium'
+                  }`}>
+                    &ldquo;{item.proposed_text}&rdquo;
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 flex items-center justify-between">
+                    <span><strong>Reason:</strong> {item.reason}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

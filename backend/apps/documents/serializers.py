@@ -1,3 +1,4 @@
+import re
 from rest_framework import serializers
 from .models import JobDescription, ReferenceResume
 from .parsers import parse_uploaded_document, parse_resume_document_full, DocumentParserError
