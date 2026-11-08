@@ -169,6 +169,23 @@ class AnalyzeAndGenerateView(APIView):
             )
 
         # STRICT STRUCTURAL INVARIANT ENFORCEMENT
+        # Ensure project links are extracted from reference resume document if available
+        if ref_obj and ref_obj.uploaded_file:
+            ref_parsed = ref_obj.parsed_data if isinstance(ref_obj.parsed_data, dict) else {}
+            if not ref_parsed.get('projects'):
+                try:
+                    from apps.documents.parsers import parse_resume_document_full
+                    _, extracted_projs = parse_resume_document_full(
+                        ref_obj.uploaded_file.path if hasattr(ref_obj.uploaded_file, 'path') else ref_obj.uploaded_file,
+                        ref_obj.file_name or getattr(ref_obj.uploaded_file, 'name', '')
+                    )
+                    if extracted_projs:
+                        ref_parsed['projects'] = extracted_projs
+                        ref_obj.parsed_data = ref_parsed
+                        ref_obj.save(update_fields=['parsed_data'])
+                except Exception as ex:
+                    logger.warning(f"Could not extract project links on-the-fly: {ex}")
+
         baseline_data = build_baseline_from_profile_and_resume(
             profile_data=profile_data,
             reference_resume_data=getattr(ref_obj, 'parsed_data', None),

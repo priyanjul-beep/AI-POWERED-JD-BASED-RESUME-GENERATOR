@@ -189,6 +189,33 @@ def build_baseline_from_profile_and_resume(
                     "highlights": proj.get("highlights") or []
                 })
 
+        # Enrich baseline projects with links from reference_resume_data
+        ref_projs = reference_resume_data.get("projects") or [] if isinstance(reference_resume_data, dict) else []
+        if baseline["projects"] and ref_projs:
+            for b_p in baseline["projects"]:
+                b_title = _clean_str(b_p.get("title"))
+                for r_p in ref_projs:
+                    r_title = _clean_str(r_p.get("title"))
+                    if b_title and r_title and (b_title in r_title or r_title in b_title):
+                        if not b_p.get("github_url") and r_p.get("github_url"):
+                            b_p["github_url"] = r_p["github_url"]
+                        if not b_p.get("demo_url") and r_p.get("demo_url"):
+                            b_p["demo_url"] = r_p["demo_url"]
+                        if not b_p.get("url") and r_p.get("url"):
+                            b_p["url"] = r_p["url"]
+
+        # If baseline projects are still missing links, extract from reference_resume_text
+        if baseline["projects"] and reference_resume_text:
+            for b_p in baseline["projects"]:
+                if not b_p.get("github_url") or not b_p.get("demo_url"):
+                    gh, dm = extract_project_urls_from_text(b_p.get("title", ""), reference_resume_text)
+                    if gh and not b_p.get("github_url"):
+                        b_p["github_url"] = gh
+                    if dm and not b_p.get("demo_url"):
+                        b_p["demo_url"] = dm
+                    if not b_p.get("url"):
+                        b_p["url"] = gh or dm or ""
+
         if not baseline["education"] and reference_resume_data.get("education"):
             for edu in reference_resume_data["education"]:
                 baseline["education"].append({
@@ -221,6 +248,34 @@ def build_baseline_from_profile_and_resume(
         baseline["achievements_and_coding"] = [str(x).strip() for x in ach_list if str(x).strip()]
 
     return baseline
+
+
+def extract_project_urls_from_text(proj_title: str, text: str) -> Tuple[str, str]:
+    """Extracts (github_url, demo_url) associated with a project title from resume text."""
+    if not proj_title or not text:
+        return "", ""
+    clean = re.sub(r'[^a-zA-Z0-9]+', ' ', proj_title).strip().lower()
+    title_words = [w for w in clean.split() if len(w) > 3][:3]
+    if not title_words:
+        return "", ""
+
+    for line in text.split('\n'):
+        line_lower = line.lower()
+        if all(w in line_lower for w in title_words):
+            urls = re.findall(r'https?://[^\s\]\)\>]+', line)
+            gh = ""
+            dm = ""
+            for u in urls:
+                u_clean = u.rstrip('.,;]')
+                if 'github.com' in u_clean.lower() or 'gitlab' in u_clean.lower():
+                    if not gh:
+                        gh = u_clean
+                else:
+                    if not dm:
+                        dm = u_clean
+            if gh or dm:
+                return gh, dm
+    return "", ""
 
 
 def _clean_str(val: Any) -> str:
@@ -419,6 +474,14 @@ def enforce_structural_identity(
                     (proj_words and any(w in ref_lower for w in proj_words))
                 )
                 if is_substantiated:
+                    if reference_resume_text and (not gen_proj.get("github_url") or not gen_proj.get("demo_url")):
+                        gh, dm = extract_project_urls_from_text(gen_proj.get("title", ""), reference_resume_text)
+                        if gh and not gen_proj.get("github_url"):
+                            gen_proj["github_url"] = gh
+                        if dm and not gen_proj.get("demo_url"):
+                            gen_proj["demo_url"] = dm
+                        if not gen_proj.get("url"):
+                            gen_proj["url"] = gh or dm or ""
                     sanitized_projects.append(gen_proj)
                 else:
                     highlights = gen_proj.get("highlights") or []
@@ -469,12 +532,19 @@ def enforce_structural_identity(
 
             if best_gen is not None:
                 used_proj_indices.add(best_gen_idx)
+                gh = best_gen.get("github_url") or base_proj.get("github_url") or ""
+                dm = best_gen.get("demo_url") or base_proj.get("demo_url") or ""
+                if reference_resume_text and (not gh or not dm):
+                    text_gh, text_dm = extract_project_urls_from_text(base_proj["title"], reference_resume_text)
+                    gh = gh or text_gh
+                    dm = dm or text_dm
+
                 merged_proj = {
                     "title": base_proj["title"],  # NEVER CHANGE ORIGINAL PROJECT NAME
                     "role": best_gen.get("role") or base_proj.get("role") or "",
-                    "url": base_proj.get("url") or best_gen.get("url") or "",
-                    "github_url": best_gen.get("github_url") or base_proj.get("github_url") or "",
-                    "demo_url": best_gen.get("demo_url") or base_proj.get("demo_url") or "",
+                    "url": best_gen.get("url") or base_proj.get("url") or gh or dm or "",
+                    "github_url": gh,
+                    "demo_url": dm,
                     "technologies": best_gen.get("technologies") or base_proj.get("technologies") or [],
                     "description": best_gen.get("description") or base_proj.get("description") or "",
                     "highlights": best_gen.get("highlights") or base_proj.get("highlights") or []
@@ -495,6 +565,14 @@ def enforce_structural_identity(
                     )
                 )
                 if is_substantiated:
+                    if reference_resume_text and (not gen_proj.get("github_url") or not gen_proj.get("demo_url")):
+                        gh, dm = extract_project_urls_from_text(gen_proj.get("title", ""), reference_resume_text)
+                        if gh and not gen_proj.get("github_url"):
+                            gen_proj["github_url"] = gh
+                        if dm and not gen_proj.get("demo_url"):
+                            gen_proj["demo_url"] = dm
+                        if not gen_proj.get("url"):
+                            gen_proj["url"] = gh or dm or ""
                     sanitized_projects.append(gen_proj)
                 else:
                     highlights = gen_proj.get("highlights") or []

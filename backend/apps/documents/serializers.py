@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import JobDescription, ReferenceResume
-from .parsers import parse_uploaded_document, DocumentParserError
+from .parsers import parse_uploaded_document, parse_resume_document_full, DocumentParserError
 
 class JobDescriptionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -39,15 +39,18 @@ class ReferenceResumeSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         uploaded_file = validated_data.get('uploaded_file')
         raw_text = ""
+        extracted_projects = []
         file_name = validated_data.get('file_name', '')
         if uploaded_file:
             if not file_name:
                 file_name = uploaded_file.name
                 validated_data['file_name'] = file_name
             try:
-                raw_text = parse_uploaded_document(uploaded_file, uploaded_file.name)
+                raw_text, extracted_projects = parse_resume_document_full(uploaded_file, uploaded_file.name)
             except DocumentParserError as e:
                 raise serializers.ValidationError(str(e))
 
         validated_data['raw_text'] = raw_text
+        if extracted_projects:
+            validated_data['parsed_data'] = {'projects': extracted_projects}
         return super().create(validated_data)
