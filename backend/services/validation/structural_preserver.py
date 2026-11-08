@@ -79,6 +79,17 @@ def build_baseline_from_profile_and_resume(
             if profile_data.get(f):
                 baseline["header"][f] = profile_data[f]
 
+    # Prioritize contact email provided in the uploaded reference resume over user account login email
+    ref_email = ""
+    if reference_resume_data and isinstance(reference_resume_data, dict):
+        ref_email = reference_resume_data.get("header", {}).get("email") or ""
+    if not ref_email and reference_resume_text:
+        email_match = re.search(r'[a-zA-Z0-9_\.\+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-\.]+', reference_resume_text)
+        if email_match:
+            ref_email = email_match.group(0).rstrip('.')
+    if ref_email:
+        baseline["header"]["email"] = ref_email
+
         if profile_data.get("summary"):
             baseline["summary"] = profile_data["summary"]
 
@@ -322,6 +333,12 @@ def enforce_structural_identity(
     for field in PROTECTED_HEADER_FIELDS:
         if base_header.get(field):
             sanitized["header"][field] = base_header[field]
+
+    # Prioritize email provided in the uploaded reference resume over user account login email
+    if reference_resume_text:
+        email_match = re.search(r'[a-zA-Z0-9_\.\+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-\.]+', reference_resume_text)
+        if email_match:
+            sanitized["header"]["email"] = email_match.group(0).rstrip('.')
 
     # Preserve URLs if baseline has them
     for url_field in ["linkedin_url", "github_url", "portfolio_url"]:

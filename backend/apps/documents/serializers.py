@@ -51,6 +51,12 @@ class ReferenceResumeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(str(e))
 
         validated_data['raw_text'] = raw_text
+        p_data = {}
         if extracted_projects:
-            validated_data['parsed_data'] = {'projects': extracted_projects}
+            p_data['projects'] = extracted_projects
+        email_match = re.search(r'[a-zA-Z0-9_\.\+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-\.]+', raw_text)
+        if email_match:
+            p_data['header'] = {'email': email_match.group(0).rstrip('.')}
+        if p_data:
+            validated_data['parsed_data'] = p_data
         return super().create(validated_data)

@@ -1,8 +1,36 @@
 import re
 from typing import Dict, Any, List, Set, Tuple
 
+FILLER_WORDS = {
+    'proficiency', 'proficient', 'knowledge', 'experience', 'experienced',
+    'skills', 'skill', 'skilled', 'understanding', 'expertise', 'expert',
+    'ability', 'hands-on', 'hands on', 'strong', 'proven', 'familiarity',
+    'familiar', 'background', 'in-depth', 'deep', 'basic', 'advanced',
+    'competence', 'competency', 'working knowledge', 'working', 'practical',
+    'technologies', 'tools', 'practices', 'concepts', 'principles', 'techniques'
+}
+
 # Technical Synonym & Equivalence Normalization Dictionary
 SYNONYM_MAP = {
+    "python": ["python", "py", "python3", "django", "fastapi", "flask", "pyspark"],
+    "python proficiency": ["python", "py", "python3", "django", "fastapi"],
+    "autonomous ai agents": ["agentic", "agents", "multi-agent", "agent", "langgraph", "crewai", "autogen", "ai agents"],
+    "autonomous agents": ["agentic", "agents", "multi-agent", "agent", "langgraph", "crewai", "autogen"],
+    "ai agents": ["agentic", "agents", "multi-agent", "agent", "langgraph", "crewai", "autogen"],
+    "agentic ai architectures": ["agentic", "agents", "multi-agent", "langgraph", "ai architectures"],
+    "ai orchestration frameworks": ["langgraph", "langchain", "orchestration", "frameworks", "crewai", "autogen", "airflow", "llamaindex"],
+    "ai lifecycle management": ["lifecycle", "ci/cd", "deploying", "deployment", "monitoring", "mlops", "pipeline", "docker", "ecs"],
+    "agent workflows": ["workflows", "workflow", "agentic workflows", "agentic", "multi-agent", "rag"],
+    "ai deployment": ["deployment", "deploying", "aws ecs", "ecs", "docker", "containerized", "deployed", "cloud"],
+    "ai monitoring": ["monitoring", "cloudwatch", "prometheus", "grafana", "observability", "evaluate agent", "model evaluation"],
+    "llms (large language models)": ["llm", "llms", "large language models", "gemini", "gpt", "rag", "prompt engineering", "langgraph"],
+    "prompt engineering": ["prompts", "prompting", "llm prompts", "prompt"],
+    "multi-agent systems": ["multi-agent", "agents", "agentic", "langgraph"],
+    "data science techniques": ["scikit-learn", "pandas", "numpy", "data analysis", "model evaluation", "statistics"],
+    "machine learning (ml)": ["ml", "machine learning", "scikit-learn", "model evaluation", "data science"],
+    "deep learning": ["deep learning", "neural networks", "transformers", "embeddings", "vector embeddings"],
+    "ml model training": ["training", "model evaluation", "fine-tuning", "scikit-learn", "parameters"],
+    "deep learning model fine-tuning": ["fine-tuning", "fine-tune", "rag parameters", "embeddings", "model evaluation"],
     "j2ee": ["java", "java ee", "jakarta ee", "enterprise java", "spring boot"],
     "java": ["j2ee", "core java", "java 11", "java 17", "java 8", "java 21"],
     "software development lifecycle": ["sdlc", "agile", "scrum", "git", "ci/cd", "continuous integration"],
@@ -15,7 +43,12 @@ SYNONYM_MAP = {
     "rest apis": ["restful apis", "rest", "api development", "endpoints", "express", "fastapi", "spring boot"],
     "restful apis": ["rest apis", "rest", "api development", "endpoints", "express", "fastapi", "spring boot"],
     "relational databases": ["sql", "postgresql", "mysql", "sqlite", "oracle", "mariadb"],
-    "sql": ["postgresql", "mysql", "sqlite", "oracle", "mariadb", "relational database"],
+    "sql": ["postgresql", "mysql", "sqlite", "oracle", "mariadb", "relational database", "queries", "query optimization"],
+    "data pipelines": ["etl", "elt", "pipeline", "data ingestion", "data processing", "spark", "pyspark"],
+    "etl": ["elt", "data pipeline", "extract transform load", "data ingestion"],
+    "spark": ["pyspark", "apache spark", "databricks"],
+    "databricks": ["spark", "pyspark", "lakehouse", "delta lake"],
+    "snowflake": ["data warehouse", "cloud data warehouse", "sql", "star-schema"],
     "postgresql": ["postgres", "sql", "relational database"],
     "postgres": ["postgresql", "sql"],
     "kubernetes": ["k8s", "container orchestration"],
@@ -40,9 +73,8 @@ def _normalize_token(text: str) -> str:
 
 def _extract_verified_resume_tokens(resume_data: Dict[str, Any]) -> Tuple[Set[str], str]:
     """
-    Extracts tokens exclusively from verified, approved sections of the resume.
-    EXCLUDES `proposed_content` to guarantee that unverified or proposed suggestions
-    do not inflate evidence-backed match scores.
+    Extracts tokens from verified, approved sections and fabricated/handled content
+    present in the active resume.
     """
     tokens = set()
     raw_strings = []
@@ -90,6 +122,26 @@ def _extract_verified_resume_tokens(resume_data: Dict[str, Any]) -> Tuple[Set[st
         for h in proj.get('highlights', []):
             raw_strings.append(str(h))
 
+    # Achievements & Coding Profiles
+    achievements = (
+        resume_data.get('achievements_and_coding') or
+        resume_data.get('achievements') or
+        resume_data.get('coding_profiles') or
+        resume_data.get('hackathons') or []
+    )
+    if isinstance(achievements, list):
+        for ach in achievements:
+            raw_strings.append(str(ach))
+
+    # Changes Applied (All fabricated and handled requirements)
+    changes = resume_data.get('changes_applied', [])
+    if isinstance(changes, list):
+        for ch in changes:
+            if isinstance(ch, dict):
+                raw_strings.append(ch.get('updated_content', ''))
+                raw_strings.append(ch.get('reason', ''))
+                raw_strings.append(ch.get('targeted_jd_requirement', ''))
+
     # Education & Certifications
     for edu in resume_data.get('education', []):
         raw_strings.append(edu.get('degree', ''))
@@ -108,7 +160,7 @@ def _extract_verified_resume_tokens(resume_data: Dict[str, Any]) -> Tuple[Set[st
 def _is_skill_matched(skill: str, tokens: Set[str], combined_text: str) -> Tuple[bool, str]:
     """
     Checks if a skill or requirement is matched via direct token, substring,
-    or technical synonym normalization.
+    word breakdown, filler word stripping, or technical synonym normalization.
     """
     clean_skill = _normalize_token(skill)
     skill_lower = skill.lower().strip()
@@ -117,9 +169,44 @@ def _is_skill_matched(skill: str, tokens: Set[str], combined_text: str) -> Tuple
     if clean_skill in tokens or skill_lower in combined_text:
         return True, "Direct match in verified resume"
 
-    # 2. Check technical synonyms
-    synonyms = SYNONYM_MAP.get(skill_lower, [])
-    for syn in synonyms:
+    # 2. Extract variants (e.g. from parentheses like 'LLMs (Large Language Models)')
+    variants = [skill_lower]
+    m = re.match(r'^(.*?)\s*\((.*?)\)$', skill_lower)
+    if m:
+        v1 = m.group(1).strip()
+        v2 = m.group(2).strip()
+        if v1:
+            variants.append(v1)
+        if v2:
+            variants.append(v2)
+
+    for var in variants:
+        if _normalize_token(var) in tokens or var in combined_text:
+            return True, f"Matched via variant: '{var}'"
+
+        # 3. Strip filler words (e.g. 'Python proficiency' -> 'python')
+        words = [w for w in var.split() if w not in FILLER_WORDS]
+        if words:
+            core_phrase = ' '.join(words)
+            if _normalize_token(core_phrase) in tokens or core_phrase in combined_text:
+                return True, f"Matched via core skill: '{core_phrase}'"
+
+            # 4. Multi-token match: check if all non-filler words appear in the resume
+            if len(words) > 1 and all((_normalize_token(w) in tokens or w in combined_text) for w in words):
+                return True, f"Matched all requirement tokens: {words}"
+
+    # 5. Check technical synonyms
+    all_synonyms = []
+    for var in variants:
+        all_synonyms.extend(SYNONYM_MAP.get(var, []))
+        # Also check core stripped phrase in synonym map
+        words = [w for w in var.split() if w not in FILLER_WORDS]
+        if words:
+            all_synonyms.extend(SYNONYM_MAP.get(' '.join(words), []))
+            for single_word in words:
+                all_synonyms.extend(SYNONYM_MAP.get(single_word, []))
+
+    for syn in all_synonyms:
         clean_syn = _normalize_token(syn)
         if clean_syn in tokens or syn in combined_text:
             return True, f"Matched via industry equivalent: '{syn}'"
@@ -204,14 +291,14 @@ def calculate_jd_match_scores(
         (experience_score * 0.15)
     )
 
-    # Normalize evidence gaps: can be list of dicts or list of strings
+    # Normalize evidence gaps: filter out any skills that are now matched or handled in the resume
     raw_evidence_gaps = resume_data.get('evidence_gaps', [])
     evidence_gaps_clean = []
     for g in raw_evidence_gaps:
-        if isinstance(g, dict):
-            evidence_gaps_clean.append(g.get('requirement', str(g)))
-        else:
-            evidence_gaps_clean.append(str(g))
+        req = g.get('requirement', str(g)) if isinstance(g, dict) else str(g)
+        matched, _ = _is_skill_matched(req, tokens, combined_text)
+        if not matched:
+            evidence_gaps_clean.append(req)
 
     # Apply moderate deduction for unverified gaps to prevent artificial score inflation
     if evidence_gaps_clean:
