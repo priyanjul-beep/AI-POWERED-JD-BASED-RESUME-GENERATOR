@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
-import { DashboardStats, FinalizedResumeHistory } from '@/lib/types';
+import { DashboardStats } from '@/lib/types';
 import { 
   Sparkles, 
   FileCheck2, 
@@ -28,30 +28,37 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let ignore = false;
     if (!authLoading && !user) {
       router.push('/login');
       return;
     }
     if (user) {
-      loadStats();
+      api.get<DashboardStats>('/api/resume-history/stats/')
+        .then((data) => {
+          if (!ignore) {
+            setStats(data);
+          }
+        })
+        .catch(() => {
+          if (!ignore) {
+            setStats({
+              total_resumes_generated: 0,
+              average_jd_match_score: 0,
+              recent_resumes: [],
+            });
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setLoading(false);
+          }
+        });
     }
-  }, [user, authLoading]);
-
-  const loadStats = async () => {
-    try {
-      const data = await api.get<DashboardStats>('/api/resume-history/stats/');
-      setStats(data);
-    } catch {
-      // Fallback empty stats
-      setStats({
-        total_resumes_generated: 0,
-        average_jd_match_score: 0,
-        recent_resumes: [],
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      ignore = true;
+    };
+  }, [user, authLoading, router]);
 
   if (authLoading || loading) {
     return (
@@ -185,7 +192,7 @@ export default function DashboardPage() {
 
                   <div className="flex items-center gap-2">
                     <a
-                      href={`${api.getBaseUrl()}/api/resume-generations/${resume.generation}/pdf/`}
+                      href={`${api.getBaseUrl()}/api/resume-generations/${resume.generation}/pdf/?token=${api.getAccessToken() || ''}`}
                       target="_blank"
                       rel="noreferrer"
                       className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 flex items-center gap-1.5 transition-colors"
@@ -194,7 +201,7 @@ export default function DashboardPage() {
                       View
                     </a>
                     <a
-                      href={`${api.getBaseUrl()}/api/resume-generations/${resume.generation}/download/`}
+                      href={`${api.getBaseUrl()}/api/resume-generations/${resume.generation}/download/?token=${api.getAccessToken() || ''}`}
                       className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-xs font-medium text-indigo-300 flex items-center gap-1.5 transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />

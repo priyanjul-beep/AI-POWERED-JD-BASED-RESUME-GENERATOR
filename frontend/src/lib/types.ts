@@ -85,11 +85,12 @@ export interface CareerProfile {
 
 export interface ChangeDetail {
   section: string;
-  change_type: 'ADDED' | 'MODIFIED' | 'REMOVED';
+  change_type: 'ADDED' | 'MODIFIED' | 'REMOVED' | 'PROPOSED';
   original_content: string;
   updated_content: string;
   reason: string;
   supporting_evidence: string;
+  confirmation_status?: string;
 }
 
 export interface ResumeSkills {
@@ -115,6 +116,8 @@ export interface ResumeProject {
   title: string;
   role?: string;
   url?: string;
+  github_url?: string;
+  demo_url?: string;
   technologies: string[];
   description: string;
   highlights: string[];
@@ -137,6 +140,39 @@ export interface ResumeCertification {
   credential_id?: string;
 }
 
+export interface RequirementMapping {
+  requirement_name: string;
+  category: string;
+  classification: string;
+  candidate_evidence: string;
+  evidence_source: string;
+  status: 'VERIFIED' | 'TRANSFERABLE' | 'USER_CONFIRMATION_REQUIRED' | 'UNSUPPORTED' | 'PROPOSED';
+  recommended_action: string;
+}
+
+export interface ProposedContentItem {
+  target_section: string;
+  proposed_text: string;
+  targeted_jd_requirement: string;
+  reason: string;
+  requires_user_confirmation: boolean;
+}
+
+export interface EvidenceGapItem {
+  requirement: string;
+  reason_missing?: string;
+  transferable_evidence?: string;
+  suggested_user_input?: string;
+  industry_pattern?: string;
+  requires_confirmation?: boolean;
+}
+
+export interface MissingMandatoryExplanation {
+  skill: string;
+  reason: string;
+  suggestion: string;
+}
+
 export interface StructuredResumeData {
   header: {
     full_name: string;
@@ -154,8 +190,14 @@ export interface StructuredResumeData {
   projects: ResumeProject[];
   education: ResumeEducation[];
   certifications: ResumeCertification[];
+  achievements_and_coding?: string[];
+  achievements?: string[];
+  coding_profiles?: string[];
+  hackathons?: string[];
   changes_applied: ChangeDetail[];
-  evidence_gaps: string[];
+  evidence_gaps: (EvidenceGapItem | string)[];
+  requirement_mappings?: RequirementMapping[];
+  proposed_content?: ProposedContentItem[];
 }
 
 export interface ResumeMatchReport {
@@ -167,17 +209,19 @@ export interface ResumeMatchReport {
   experience_relevance_score: number;
   matched_mandatory_skills: string[];
   missing_mandatory_skills: string[];
+  missing_mandatory_explanations?: MissingMandatoryExplanation[];
   matched_preferred_skills: string[];
   missing_preferred_skills: string[];
   matched_keywords: string[];
   missing_keywords: string[];
-  evidence_gaps: string[];
+  evidence_gaps: (EvidenceGapItem | string)[];
 }
 
 export interface ResumeVersion {
   id: number;
   version_number: number;
   structured_resume_data: StructuredResumeData;
+  tailored_resume_data?: StructuredResumeData;
   change_analysis: ChangeDetail[];
   user_instructions?: string;
   created_at: string;

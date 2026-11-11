@@ -14,11 +14,9 @@ import {
   Eye, 
   Download, 
   Target, 
-  FileText, 
   X, 
   Loader2, 
-  Sparkles,
-  ArrowRight
+  Sparkles
 } from 'lucide-react';
 
 export default function ResumeHistoryPage() {
@@ -34,27 +32,61 @@ export default function ResumeHistoryPage() {
     resume: FinalizedResumeHistory;
     report: ResumeMatchReport | null;
   } | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+
+  const handleDownloadPdf = async (genId: number, filename: string) => {
+    setDownloadingId(genId);
+    try {
+      const blob = await api.get<Blob>(`/api/resume-generations/${genId}/download/`);
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename || 'resume.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: unknown) {
+      console.warn('Blob download failed, trying tokenized URL fallback...', err);
+      const token = api.getAccessToken();
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${genId}/download/${token ? `?token=${token}` : ''}`;
+      const fallbackLink = document.createElement('a');
+      fallbackLink.href = directUrl;
+      fallbackLink.download = filename || 'resume.pdf';
+      document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      document.body.removeChild(fallbackLink);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   useEffect(() => {
+    let ignore = false;
     if (!authLoading && !user) {
       router.push('/login');
       return;
     }
     if (user) {
-      loadHistory();
+      api.get<FinalizedResumeHistory[]>('/api/resume-history/')
+        .then((data) => {
+          if (!ignore) {
+            setHistoryList(data);
+          }
+        })
+        .catch((err) => {
+          console.error(err);
+        })
+        .finally(() => {
+          if (!ignore) {
+            setLoading(false);
+          }
+        });
     }
-  }, [user, authLoading]);
-
-  const loadHistory = async () => {
-    try {
-      const data = await api.get<FinalizedResumeHistory[]>('/api/resume-history/');
-      setHistoryList(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      ignore = true;
+    };
+  }, [user, authLoading, router]);
 
   const handleOpenMatchReport = async (item: FinalizedResumeHistory) => {
     try {
@@ -153,13 +185,19 @@ export default function ResumeHistoryPage() {
                     Match Report
                   </button>
 
-                  <a
-                    href={`${api.getBaseUrl()}/api/resume-generations/${item.generation}/download/`}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-1.5 transition-all"
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdf(item.generation, item.filename)}
+                    disabled={downloadingId === item.generation}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold shadow-md shadow-indigo-500/20 flex items-center gap-1.5 transition-all disabled:opacity-50"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    {downloadingId === item.generation ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" />
+                    )}
                     Download PDF
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
@@ -196,13 +234,19 @@ export default function ResumeHistoryPage() {
                 <p className="text-xs text-slate-400">{viewResume.filename}</p>
               </div>
               <div className="flex items-center gap-2">
-                <a
-                  href={`${api.getBaseUrl()}/api/resume-generations/${viewResume.generation}/download/`}
-                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5"
+                <button
+                  type="button"
+                  onClick={() => handleDownloadPdf(viewResume.generation, viewResume.filename)}
+                  disabled={downloadingId === viewResume.generation}
+                  className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  {downloadingId === viewResume.generation ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
                   Download
-                </a>
+                </button>
                 <button onClick={() => setViewResume(null)} className="text-slate-400 hover:text-white p-1">
                   <X className="w-5 h-5" />
                 </button>

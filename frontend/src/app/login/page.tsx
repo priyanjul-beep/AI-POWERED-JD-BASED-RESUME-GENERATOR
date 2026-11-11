@@ -7,8 +7,8 @@ import { Lock, User, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('testuser');
-  const [password, setPassword] = useState('Password123!');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 

@@ -17,14 +17,27 @@ class ResumeRevisionSerializer(serializers.ModelSerializer):
 class ResumeVersionSerializer(serializers.ModelSerializer):
     match_report = ResumeMatchReportSerializer(read_only=True)
     revisions = ResumeRevisionSerializer(many=True, read_only=True)
+    tailored_resume_data = serializers.SerializerMethodField()
 
     class Meta:
         model = ResumeVersion
         fields = (
-            'id', 'version_number', 'structured_resume_data',
+            'id', 'version_number', 'structured_resume_data', 'tailored_resume_data',
             'change_analysis', 'user_instructions', 'created_at',
             'match_report', 'revisions'
         )
+
+    def get_tailored_resume_data(self, obj):
+        try:
+            from services.matching.tailored_filter import filter_resume_for_jd
+            jd_analysis = (
+                obj.generation.job_description.parsed_analysis
+                if obj.generation and obj.generation.job_description
+                else {}
+            )
+            return filter_resume_for_jd(obj.structured_resume_data, jd_analysis)
+        except Exception:
+            return obj.structured_resume_data
 
 
 class ResumeGenerationSerializer(serializers.ModelSerializer):

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import confetti from 'canvas-confetti';
 import { useAuth } from '@/lib/auth';
@@ -8,25 +8,25 @@ import { api } from '@/lib/api';
 import { 
   ResumeGeneration, 
   ResumeVersion, 
-  StructuredResumeData, 
-  ResumeMatchReport 
+  ProposedContentItem
 } from '@/lib/types';
 import StructuredResumeView from '@/components/review/StructuredResumeView';
 import ScoreMeter from '@/components/review/ScoreMeter';
 import ApprovalModal from '@/components/review/ApprovalModal';
+import AiAnalysisLoader from '@/components/generate/AiAnalysisLoader';
 import { 
   CheckCircle2, 
   XCircle, 
-  Send, 
   AlertOctagon, 
-  ArrowLeft, 
   Loader2, 
   Sparkles, 
   Download, 
   Eye, 
-  History,
   FileCheck2,
-  Clock
+  Clock,
+  History,
+  Target,
+  FileText
 } from 'lucide-react';
 
 export default function ResumeReviewPage() {
@@ -40,33 +40,30 @@ export default function ResumeReviewPage() {
   const [selectedVersionNum, setSelectedVersionNum] = useState<number>(1);
   const [currentVersion, setCurrentVersion] = useState<ResumeVersion | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resumeMode, setResumeMode] = useState<'tailored' | 'general'>('tailored');
 
   // NO comment revision state
   const [userComment, setUserComment] = useState('');
   const [isRevising, setIsRevising] = useState(false);
   const [revisionError, setRevisionError] = useState('');
+  const [selectedProposedBullets, setSelectedProposedBullets] = useState<string[]>([]);
 
   // YES approval state
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [isFinalized, setIsFinalized] = useState(false);
-  const [finalPdfUrl, setFinalPdfUrl] = useState('');
-  const [finalDownloadUrl, setFinalDownloadUrl] = useState('');
   const [finalFilename, setFinalFilename] = useState('');
 
   // Cancel state
   const [isCancelling, setIsCancelling] = useState(false);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/login');
-      return;
-    }
-    if (user && generationId) {
-      loadGeneration();
-    }
-  }, [user, authLoading, generationId]);
+  // Authenticated Preview & Download state
+  const [isPreviewingPdf, setIsPreviewingPdf] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
-  const loadGeneration = async () => {
+  // Ref for revision in-flight cancellation
+  const revisionAbortControllerRef = useRef<AbortController | null>(null);
+
+  const loadGeneration = useCallback(async () => {
     try {
       const data = await api.get<ResumeGeneration>(`/api/resume-generations/${generationId}/`);
       setGeneration(data);
@@ -77,21 +74,89 @@ export default function ResumeReviewPage() {
 
       if (data.status === 'APPROVED') {
         setIsFinalized(true);
-        setFinalPdfUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/pdf/`);
-        setFinalDownloadUrl(`${api.getBaseUrl()}/api/resume-generations/${data.id}/download/`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [generationId]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!authLoading && !user) {
+      router.push('/login');
+      return;
+    }
+    if (user && generationId) {
+      api.get<ResumeGeneration>(`/api/resume-generations/${generationId}/`)
+        .then((data) => {
+          if (ignore) return;
+          setGeneration(data);
+          setSelectedVersionNum(data.current_version_number);
+
+          const activeVer = data.versions.find(v => v.version_number === data.current_version_number) || data.versions[data.versions.length - 1];
+          setCurrentVersion(activeVer || null);
+
+          if (data.status === 'APPROVED') {
+            setIsFinalized(true);
+          }
+        })
+        .catch((err: unknown) => {
+          console.error(err);
+        })
+        .finally(() => {
+          if (!ignore) {
+            setLoading(false);
+          }
+        });
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [user, authLoading, generationId, router]);
 
   const handleSelectVersion = (versionNum: number) => {
     if (!generation) return;
     setSelectedVersionNum(versionNum);
     const ver = generation.versions.find(v => v.version_number === versionNum);
-    if (ver) setCurrentVersion(ver);
+    if (ver) {
+      setCurrentVersion(ver);
+      setSelectedProposedBullets([]);
+    }
+  };
+
+  // Toggle Proposed Bullet Add / Revert into Feedback Box
+  const handleToggleProposedBullet = (item: ProposedContentItem) => {
+    const bulletKey = item.proposed_text.trim();
+    const isAlreadySelected = selectedProposedBullets.includes(bulletKey);
+    const formattedLine = `• Confirm & include into ${item.target_section}: "${bulletKey}"`;
+
+    if (isAlreadySelected) {
+      setSelectedProposedBullets(prev => prev.filter(k => k !== bulletKey));
+      setUserComment(prev => {
+        const lines = prev.split('\n');
+        const remainingLines = lines.filter(line => !line.includes(bulletKey));
+        return remainingLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+      });
+    } else {
+      setSelectedProposedBullets(prev => [...prev, bulletKey]);
+      setUserComment(prev => {
+        const trimmed = prev.trim();
+        if (!trimmed) {
+          return formattedLine;
+        }
+        return `${trimmed}\n\n${formattedLine}`;
+      });
+    }
+  };
+
+  // Cancel In-Flight Revision
+  const handleCancelRevision = () => {
+    if (revisionAbortControllerRef.current) {
+      revisionAbortControllerRef.current.abort();
+    }
+    setIsRevising(false);
   };
 
   // Human-in-the-Loop Step: Click NO
@@ -102,22 +167,94 @@ export default function ResumeReviewPage() {
       return;
     }
 
+    const controller = new AbortController();
+    revisionAbortControllerRef.current = controller;
     setIsRevising(true);
     setRevisionError('');
 
     try {
-      const updatedGen = await api.post<ResumeGeneration>(`/api/resume-generations/${generationId}/revise/`, {
-        user_comment: userComment.trim(),
-      });
+      const updatedGen = await api.post<ResumeGeneration>(
+        `/api/resume-generations/${generationId}/revise/`, 
+        { user_comment: userComment.trim() },
+        { signal: controller.signal }
+      );
       setGeneration(updatedGen);
       setSelectedVersionNum(updatedGen.current_version_number);
       const newActive = updatedGen.versions.find(v => v.version_number === updatedGen.current_version_number);
       setCurrentVersion(newActive || null);
       setUserComment('');
-    } catch (err: any) {
-      setRevisionError(err.message || 'Failed to submit revision.');
+      setSelectedProposedBullets([]);
+    } catch (err: unknown) {
+      const isAbort = err instanceof Error && (err.name === 'AbortError' || err.message?.toLowerCase().includes('aborted'));
+      if (isAbort) {
+        return;
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to submit revision.';
+      setRevisionError(msg);
     } finally {
       setIsRevising(false);
+      revisionAbortControllerRef.current = null;
+    }
+  };
+
+  // Authenticated PDF Preview via Blob URL with fallback to tokenized direct URL (supports tailored & general modes)
+  const handlePreviewPdf = async () => {
+    setIsPreviewingPdf(true);
+    try {
+      const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
+        ? currentVersion.tailored_resume_data
+        : currentVersion?.structured_resume_data;
+
+      const blob = await api.post<Blob>(
+        `/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}&version=${selectedVersionNum}`,
+        { resume_data: activeResumeData }
+      );
+      const blobUrl = window.URL.createObjectURL(blob);
+      window.open(blobUrl, '_blank');
+    } catch (err: unknown) {
+      console.warn('Blob preview failed, falling back to tokenized URL:', err);
+      const token = api.getAccessToken();
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/?mode=${resumeMode}&version=${selectedVersionNum}${token ? `&token=${token}` : ''}`;
+      window.open(directUrl, '_blank');
+    } finally {
+      setIsPreviewingPdf(false);
+    }
+  };
+
+  // Authenticated PDF Download via Blob URL with fallback to tokenized direct URL (supports tailored & general modes)
+  const handleDownloadPdf = async () => {
+    setIsDownloadingPdf(true);
+    try {
+      const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
+        ? currentVersion.tailored_resume_data
+        : currentVersion?.structured_resume_data;
+
+      const blob = await api.post<Blob>(
+        `/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}`,
+        { resume_data: activeResumeData }
+      );
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
+      link.download = downloadName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: unknown) {
+      console.warn('Blob download failed, falling back to tokenized URL:', err);
+      const token = api.getAccessToken();
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}${token ? `&token=${token}` : ''}`;
+      const fallbackLink = document.createElement('a');
+      fallbackLink.href = directUrl;
+      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
+      fallbackLink.download = downloadName;
+      document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      document.body.removeChild(fallbackLink);
+    } finally {
+      setIsDownloadingPdf(false);
     }
   };
 
@@ -131,8 +268,6 @@ export default function ResumeReviewPage() {
       });
 
       setIsFinalized(true);
-      setFinalPdfUrl(`${api.getBaseUrl()}/api/resume-generations/${generationId}/pdf/`);
-      setFinalDownloadUrl(`${api.getBaseUrl()}/api/resume-generations/${generationId}/download/`);
       setFinalFilename(res.filename);
 
       // Trigger celebratory confetti effect
@@ -147,8 +282,9 @@ export default function ResumeReviewPage() {
       }
 
       await loadGeneration();
-    } catch (err: any) {
-      alert(err.message || 'Failed to finalize resume.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to finalize resume.';
+      alert(msg);
       throw err;
     }
   };
@@ -163,8 +299,9 @@ export default function ResumeReviewPage() {
     try {
       await api.post(`/api/resume-generations/${generationId}/cancel/`);
       router.push('/dashboard');
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel session.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to cancel session.';
+      alert(msg);
       setIsCancelling(false);
     }
   };
@@ -198,6 +335,20 @@ export default function ResumeReviewPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-8">
+      {/* Full-screen Modern AI Analysis Loader Overlay during Revision */}
+      {isRevising && generation && (
+        <AiAnalysisLoader
+          isOpen={isRevising}
+          targetRole={generation.target_role}
+          targetCompany={generation.target_company}
+          hasJdFile={false}
+          hasResumeFile={false}
+          isUploadPhase={false}
+          isSuccess={false}
+          onCancel={handleCancelRevision}
+        />
+      )}
+
       {/* Top Banner & Control Bar */}
       <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -228,8 +379,54 @@ export default function ResumeReviewPage() {
           </div>
         </div>
 
-        {/* Version History Selector & Cancel Button */}
+        {/* Resume Mode Switcher, Version History & Action Controls */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Active 1-Page Layout Mode Selector */}
+          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              onClick={() => setResumeMode('tailored')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                resumeMode === 'tailored'
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Only shows technical skills and experience bullet points required for the JD"
+            >
+              <Target className="w-3.5 h-3.5 text-indigo-300" />
+              <span>🎯 JD-Tailored (1-Page)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setResumeMode('general')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                resumeMode === 'general'
+                  ? 'bg-gradient-to-r from-slate-700 to-slate-800 text-white shadow-md'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Shows complete career profile with all technical skills and employment bullets"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-300" />
+              <span>📄 General (1-Page)</span>
+            </button>
+          </div>
+
+          {/* Quick Preview PDF Button (Available anytime during review) */}
+          <button
+            type="button"
+            onClick={handlePreviewPdf}
+            disabled={isPreviewingPdf}
+            className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-700 transition-colors disabled:opacity-50"
+            title={`Preview 1-page PDF in ${resumeMode === 'tailored' ? 'JD-Tailored' : 'General'} mode`}
+          >
+            {isPreviewingPdf ? (
+              <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+            ) : (
+              <Eye className="w-3.5 h-3.5 text-indigo-400" />
+            )}
+            <span>Preview 1-Page PDF</span>
+          </button>
+
           <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <span className="text-[11px] font-semibold text-slate-400 px-2 flex items-center gap-1">
               <History className="w-3.5 h-3.5" />
@@ -279,22 +476,32 @@ export default function ResumeReviewPage() {
             </div>
 
             <div className="flex items-center gap-3">
-              <a
-                href={finalPdfUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 border border-slate-700 transition-colors"
+              <button
+                type="button"
+                onClick={handlePreviewPdf}
+                disabled={isPreviewingPdf}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-2 border border-slate-700 transition-colors disabled:opacity-50"
               >
-                <Eye className="w-4 h-4 text-indigo-400" />
-                Preview PDF
-              </a>
-              <a
-                href={finalDownloadUrl}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all"
+                {isPreviewingPdf ? (
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                ) : (
+                  <Eye className="w-4 h-4 text-indigo-400" />
+                )}
+                <span>Preview PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isDownloadingPdf}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all disabled:opacity-50"
               >
-                <Download className="w-4 h-4" />
-                Download PDF
-              </a>
+                {isDownloadingPdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4" />
+                )}
+                <span>Download PDF</span>
+              </button>
             </div>
           </div>
         </div>
@@ -306,7 +513,12 @@ export default function ResumeReviewPage() {
         <div className="lg:col-span-2 space-y-6">
           <StructuredResumeView
             resume={currentVersion.structured_resume_data}
+            tailoredResume={currentVersion.tailored_resume_data}
             changes={currentVersion.change_analysis}
+            selectedProposedBullets={selectedProposedBullets}
+            onToggleProposedBullet={handleToggleProposedBullet}
+            activeResumeMode={resumeMode}
+            onChangeResumeMode={setResumeMode}
           />
         </div>
 
@@ -336,15 +548,23 @@ export default function ResumeReviewPage() {
 
               {/* Instructions / Feedback Box */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-300">
-                  Instructions / Modification Notes (Required for NO)
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Instructions / Modification Notes (Required for NO)
+                  </label>
+                  {selectedProposedBullets.length > 0 && (
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                      {selectedProposedBullets.length} bullet{selectedProposedBullets.length > 1 ? 's' : ''} added
+                    </span>
+                  )}
+                </div>
                 <textarea
                   value={userComment}
                   onChange={(e) => setUserComment(e.target.value)}
-                  rows={3}
+                  rows={4}
                   disabled={isRevising}
-                  placeholder="e.g. 'The technical skills section needs more relevant skills.' or 'Add more Java-related keywords where supported by my experience.'"
+                  placeholder="e.g. 'The technical skills section needs more relevant skills.' or click '+ Add to Feedback' on any proposed bullet to validate it."
                   className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50"
                 />
               </div>

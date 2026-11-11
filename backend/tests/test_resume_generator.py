@@ -4,13 +4,20 @@ from django.contrib.auth.models import User
 from rest_framework.test import APIClient
 from rest_framework import status
 
-from apps.profiles.models import CareerProfile, Experience, Project, Skill
+from apps.profiles.models import CareerProfile, Experience, Project, Skill, Education, Certification
 from apps.documents.models import JobDescription, ReferenceResume
 from apps.generations.models import ResumeGeneration, ResumeVersion, GenerationStatus
 from apps.history.models import FinalizedResumeHistory
 from apps.pdf_engine.ats_generator import normalize_filename, generate_ats_pdf
 from services.matching.score_calculator import calculate_jd_match_scores
+from services.matching.requirement_mapper import build_requirement_evidence_mapping
+from prompts.industry_patterns import get_role_industry_patterns
 from services.diff.resume_differ import compute_structured_diff
+from services.validation.structural_preserver import (
+    enforce_structural_identity,
+    validate_structural_identity,
+    build_baseline_from_profile_and_resume
+)
 
 class ResumeGeneratorSystemTests(TestCase):
     def setUp(self):
@@ -280,3 +287,468 @@ class ResumeGeneratorSystemTests(TestCase):
         # Verify no finalized history entry was created
         history_entries = FinalizedResumeHistory.objects.filter(generation_id=gen_id)
         self.assertEqual(history_entries.count(), 0)
+
+    def test_scenario_a_fresher_with_java_project(self):
+        """Scenario A: Fresher applying for Java Developer role with verified Java project evidence."""
+        # Fresher candidate has Java project in profile
+        profile_data = {
+            "experiences": [],
+            "projects": [
+                {
+                    "title": "Java Spring Boot E-Commerce",
+                    "technologies": ["Java", "Spring Boot", "MySQL", "REST APIs"],
+                    "description": "Academic capstone e-commerce API service."
+                }
+            ],
+            "skills": [{"name": "Java"}, {"name": "SQL"}]
+        }
+        jd_analysis = {
+            "target_role": "Java Developer",
+            "mandatory_skills": ["Java", "Spring Boot", "REST APIs", "Unit Testing"],
+            "preferred_skills": ["Docker"],
+            "important_ats_keywords": ["Microservices", "SDLC"]
+        }
+        mappings = build_requirement_evidence_mapping(
+            jd_analysis=jd_analysis,
+            career_profile_data=profile_data,
+            reference_resume_text="",
+            experience_level="FRESHER"
+        )
+        # Java must be VERIFIED from projects/skills
+        java_map = next((m for m in mappings if m['requirement_name'] == 'Java'), None)
+        self.assertIsNotNone(java_map)
+        self.assertEqual(java_map['status'], 'VERIFIED')
+        self.assertIn("Project", java_map['recommended_action'])
+
+    def test_scenario_b_mern_developer_transferable_backend(self):
+        """Scenario B: MERN developer applying for Java Developer role with transferable backend experience."""
+        profile_data = {
+            "experiences": [
+                {
+                    "title": "Full Stack Developer",
+                    "company": "Node Tech",
+                    "technologies": ["JavaScript", "Node.js", "Express", "MongoDB", "REST APIs"],
+                    "bullet_points": ["Engineered RESTful APIs with token authentication.", "Collaborated in Agile SDLC sprints."]
+                }
+            ],
+            "projects": [],
+            "skills": [{"name": "JavaScript"}, {"name": "REST APIs"}, {"name": "Git"}]
+        }
+        jd_analysis = {
+            "target_role": "Java Developer",
+            "mandatory_skills": ["Java", "REST APIs", "Software Development Lifecycle"],
+            "preferred_skills": ["PostgreSQL"],
+            "important_ats_keywords": ["SDLC", "Agile"]
+        }
+        mappings = build_requirement_evidence_mapping(
+            jd_analysis=jd_analysis,
+            career_profile_data=profile_data,
+            reference_resume_text="MERN Stack Developer with React and Node.js expertise.",
+            experience_level="1_YEAR"
+        )
+        # REST APIs must be VERIFIED
+        api_map = next((m for m in mappings if m['requirement_name'] == 'REST APIs'), None)
+        self.assertIsNotNone(api_map)
+        self.assertEqual(api_map['status'], 'VERIFIED')
+
+        # SDLC must be VERIFIED or TRANSFERABLE from Agile/Git/experience
+        sdlc_map = next((m for m in mappings if 'Lifecycle' in m['requirement_name'] or 'SDLC' in m['requirement_name']), None)
+        self.assertIsNotNone(sdlc_map)
+        self.assertIn(sdlc_map['status'], ['VERIFIED', 'TRANSFERABLE'])
+
+        # Java has no commercial evidence; must be PROPOSED or UNSUPPORTED, NOT falsely VERIFIED
+        java_map = next((m for m in mappings if m['requirement_name'] == 'Java'), None)
+        self.assertIsNotNone(java_map)
+        self.assertNotEqual(java_map['status'], 'VERIFIED')
+
+    def test_scenario_c_java_internship_harvested_from_profile(self):
+        """Scenario C: Candidate with actual Java internship experience missing from reference resume."""
+        # Baseline profile in setUp has Java internship at Tech Corp
+        # Send reference resume that only lists React / Node
+        ref_text = "Frontend Developer. Skills: React, CSS, HTML. Built responsive web pages."
+        response = self.client.post('/api/resume-generations/analyze/', {
+            'job_description_text': 'Java Backend Developer needed with Spring Boot, REST APIs, and PostgreSQL.',
+            'target_role': 'Java Developer',
+            'target_company': 'Financial Enterprise',
+            'experience_level': 'INTERNSHIP',
+            'reference_resume_text': ref_text
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        resume_data = response.data['versions'][0]['structured_resume_data']
+        # Must surface Java in technical skills from the master Career Profile
+        skills = resume_data.get('skills', {})
+        languages = skills.get('languages', [])
+        frameworks = skills.get('frameworks', [])
+        self.assertTrue(any('Java' in s for s in languages or frameworks))
+
+    def test_scenario_d_ai_engineer_role(self):
+        """Scenario D: Candidate applying for an AI Engineer role with relevant AI projects in master profile."""
+        patterns = get_role_industry_patterns(
+            target_role="AI Engineer",
+            experience_level="1_YEAR",
+            primary_tech="Python, PyTorch",
+            database="Vector DBs & SQL"
+        )
+        self.assertTrue(len(patterns) > 0)
+        # Verify AI-specific domain terminology is produced
+        combined_patterns = " ".join(patterns).lower()
+        self.assertTrue('machine learning' in combined_patterns or 'deep learning' in combined_patterns or 'pipeline' in combined_patterns)
+
+    def test_scenario_e_mandatory_skills_no_evidence_unsupported(self):
+        """Scenario E: Candidate applying for a role with mandatory skills for which no supporting evidence exists."""
+        profile_data = {
+            "experiences": [],
+            "projects": [],
+            "skills": [{"name": "HTML"}, {"name": "CSS"}]
+        }
+        jd_analysis = {
+            "target_role": "Blockchain Developer",
+            "mandatory_skills": ["Solidity", "Rust", "Smart Contracts"],
+            "preferred_skills": ["EVM"],
+            "important_ats_keywords": ["Cryptography"]
+        }
+        mappings = build_requirement_evidence_mapping(
+            jd_analysis=jd_analysis,
+            career_profile_data=profile_data,
+            reference_resume_text="",
+            experience_level="FRESHER"
+        )
+        for m in mappings:
+            # None of these specialized skills should be marked VERIFIED
+            self.assertNotEqual(m['status'], 'VERIFIED')
+
+    def test_scenario_f_user_clicks_no_requests_revision(self):
+        """Scenario F: User clicks NO and requests additional skills."""
+        gen_res = self.client.post('/api/resume-generations/analyze/', {
+            'job_description_text': 'Java Engineer with Spring Boot and PostgreSQL.',
+            'target_role': 'Java Engineer',
+            'experience_level': 'INTERNSHIP'
+        }, format='json')
+        gen_id = gen_res.data['id']
+
+        rev_res = self.client.post(f'/api/resume-generations/{gen_id}/revise/', {
+            'user_comment': 'Please emphasize my SQL performance tuning and unit testing experience.'
+        }, format='json')
+        self.assertEqual(rev_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(rev_res.data['current_version_number'], 2)
+        self.assertEqual(rev_res.data['status'], GenerationStatus.REVISING)
+
+    def test_scenario_g_user_clicks_yes_with_final_comment(self):
+        """Scenario G: User clicks YES with a final comment."""
+        gen_res = self.client.post('/api/resume-generations/analyze/', {
+            'job_description_text': 'Java Engineer with Spring Boot.',
+            'target_role': 'Java Engineer',
+            'experience_level': 'INTERNSHIP'
+        }, format='json')
+        gen_id = gen_res.data['id']
+
+        approve_res = self.client.post(f'/api/resume-generations/{gen_id}/approve/', {
+            'user_comment': 'Approved! Highlight JUnit automated testing in summary.',
+            'page_format': 'ONE_PAGE',
+            'custom_filename': 'priyanjul_approved.pdf'
+        }, format='json')
+        self.assertEqual(approve_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(approve_res.data['filename'], 'priyanjul_approved.pdf')
+
+        # Verify only a single finalized history record exists
+        history_count = FinalizedResumeHistory.objects.filter(generation_id=gen_id).count()
+        self.assertEqual(history_count, 1)
+
+    def test_scenario_h_cancel_workflow(self):
+        """Scenario H: User cancels the generation workflow."""
+        gen_res = self.client.post('/api/resume-generations/analyze/', {
+            'job_description_text': 'Python Flask Developer needed.',
+            'target_role': 'Python Developer',
+            'experience_level': 'FRESHER'
+        }, format='json')
+        gen_id = gen_res.data['id']
+
+        cancel_res = self.client.post(f'/api/resume-generations/{gen_id}/cancel/')
+        self.assertEqual(cancel_res.status_code, status.HTTP_200_OK)
+        self.assertEqual(cancel_res.data['status'], GenerationStatus.CANCELLED)
+
+        # Confirm that revising or approving a cancelled generation is rejected with 400
+        bad_rev = self.client.post(f'/api/resume-generations/{gen_id}/revise/', {
+            'user_comment': 'Try revise cancelled'
+        }, format='json')
+        self.assertEqual(bad_rev.status_code, status.HTTP_400_BAD_REQUEST)
+
+        bad_app = self.client.post(f'/api/resume-generations/{gen_id}/approve/', {
+            'page_format': 'ONE_PAGE'
+        }, format='json')
+        self.assertEqual(bad_app.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_requested_exact_structural_preservation(self):
+        """
+        User Test Case:
+        Original resume:
+        - Existing company: Company A.
+        - Existing designation: Software Development Intern.
+        - Existing project: E-Commerce Platform.
+        - Existing degree: Bachelor of Technology.
+        - Existing certification: Original Certification.
+        JD: Java Backend Developer.
+        """
+        # Create fresh candidate profile matching user test specification
+        user_spec = User.objects.create_user(
+            username='specuser',
+            email='specuser@example.com',
+            password='Password123!',
+            first_name='Candidate',
+            last_name='Spec'
+        )
+        self.client.force_authenticate(user=user_spec)
+
+        spec_profile = CareerProfile.objects.create(
+            user=user_spec,
+            full_name='Candidate Spec',
+            headline='Software Development Intern',
+            email='specuser@example.com',
+            phone='+1 555-9876',
+            location='Austin, TX',
+            summary='Enthusiastic junior developer with foundational skills in web development and databases.'
+        )
+
+        Experience.objects.create(
+            profile=spec_profile,
+            experience_type=Experience.ExperienceType.INTERNSHIP,
+            title='Software Development Intern',
+            company='Company A',
+            location='Austin, TX',
+            start_date='Jan 2023',
+            end_date='Jun 2023',
+            is_current=False,
+            technologies=['Java', 'SQL', 'Git'],
+            bullet_points=['Assisted senior engineers with bug fixes and database maintenance.']
+        )
+
+        Project.objects.create(
+            profile=spec_profile,
+            title='E-Commerce Platform',
+            role='Developer',
+            url='https://github.com/spec/ecommerce',
+            technologies=['Java', 'MySQL'],
+            description='Online shopping cart application with order management.',
+            highlights=['Implemented user authentication and cart storage.']
+        )
+
+        Education.objects.create(
+            profile=spec_profile,
+            institution='State University of Science',
+            degree='Bachelor of Technology',
+            field_of_study='Computer Science and Engineering',
+            start_date='2019',
+            end_date='2023',
+            grade='First Class'
+        )
+
+        Certification.objects.create(
+            profile=spec_profile,
+            name='Original Certification',
+            issuing_organization='Global Tech Board',
+            issue_date='2022'
+        )
+
+        Skill.objects.create(
+            profile=spec_profile,
+            category=Skill.SkillCategory.LANGUAGES,
+            name='Java',
+            proficiency_level='Intermediate',
+            years_used=1.5
+        )
+
+        # Trigger generation for target role: Java Backend Developer
+        gen_res = self.client.post('/api/resume-generations/analyze/', {
+            'job_description_text': 'Java Backend Developer needed with Spring Boot, Hibernate, REST APIs, and SQL.',
+            'target_role': 'Java Backend Developer',
+            'target_company': 'Target Corp',
+            'experience_level': 'INTERNSHIP'
+        }, format='json')
+
+        self.assertEqual(gen_res.status_code, status.HTTP_201_CREATED)
+        gen_id = gen_res.data['id']
+        current_v = gen_res.data['current_version']
+        resume = current_v['structured_resume_data']
+
+        # 1. Company A must remain Company A
+        self.assertEqual(resume['work_experience'][0]['company'], 'Company A')
+
+        # 2. Software Development Intern must remain Software Development Intern (NOT upgraded)
+        self.assertEqual(resume['work_experience'][0]['title'], 'Software Development Intern')
+
+        # 3. E-Commerce Platform must retain its original project name
+        self.assertEqual(resume['projects'][0]['title'], 'E-Commerce Platform')
+
+        # 4. Degree must remain unchanged
+        self.assertEqual(resume['education'][0]['degree'], 'Bachelor of Technology')
+        self.assertEqual(resume['education'][0]['institution'], 'State University of Science')
+
+        # 5. Certification must remain unchanged
+        self.assertEqual(resume['certifications'][0]['name'], 'Original Certification')
+        self.assertEqual(resume['certifications'][0]['issuing_organization'], 'Global Tech Board')
+
+        # 6. Existing work experience bullet points optimized based on JD
+        self.assertTrue(len(resume['work_experience'][0]['bullet_points']) > 0)
+
+        # 7. Existing project descriptions / highlights optimized
+        self.assertTrue(len(resume['projects'][0]['highlights']) > 0 or len(resume['projects'][0]['description']) > 0)
+
+        # 8. Verified Java-related experience incorporated
+        self.assertIn('Java', str(resume['skills']) + str(resume['work_experience']))
+
+        # 9. Unsupported Java/Spring Boot experience can suggest project or experience bullet points in proposed_content
+        self.assertIsNotNone(resume.get('proposed_content'))
+
+        # 10. Technical skills reorganized according to JD relevance
+        self.assertIn('Java', resume['skills']['languages'])
+
+        # 11. Professional summary rewritten without changing candidate's actual background
+        self.assertTrue(len(resume['summary']) > 20)
+
+        # 12. All changes highlighted and no modifications to immutable fields
+        changes = current_v['change_analysis']
+        for ch in changes:
+            # Audit trail must not report changing company name or job title
+            self.assertNotIn('change company', ch.get('reason', '').lower())
+            self.assertNotIn('rename company', ch.get('reason', '').lower())
+
+    def test_python_validator_restores_hallucinated_fields(self):
+        """
+        Validates that enforce_structural_identity deterministically restores
+        any hallucinated protected fields generated by LLMs.
+        """
+        baseline = {
+            "header": {
+                "full_name": "Priyanjul Sonkar",
+                "email": "priyanjul@test.com",
+                "phone": "+1 555-1234",
+                "location": "New York, NY"
+            },
+            "work_experience": [
+                {
+                    "company": "Company A",
+                    "title": "Software Development Intern",
+                    "start_date": "Jan 2023",
+                    "end_date": "Jun 2023",
+                    "location": "Austin, TX",
+                    "is_current": False,
+                    "technologies": ["Java"],
+                    "bullet_points": ["Original intern bullet."]
+                }
+            ],
+            "projects": [
+                {
+                    "title": "E-Commerce Platform",
+                    "role": "Developer",
+                    "url": "https://github.com/project",
+                    "technologies": ["Java"],
+                    "description": "Original description.",
+                    "highlights": ["Original highlight."]
+                }
+            ],
+            "education": [
+                {
+                    "institution": "State University",
+                    "degree": "Bachelor of Technology",
+                    "end_date": "2023"
+                }
+            ],
+            "certifications": [
+                {
+                    "name": "Original Certification",
+                    "issuing_organization": "Tech Board",
+                    "issue_date": "2022"
+                }
+            ]
+        }
+
+        # Simulated corrupted / hallucinated LLM generation
+        hallucinated_resume = {
+            "header": {
+                "full_name": "John Doe Senior Architect",
+                "email": "hacked@example.com",
+                "phone": "+1 999-9999",
+                "location": "Silicon Valley, CA",
+                "headline": "Staff Distributed Systems Engineer"
+            },
+            "summary": "15+ years leading Fortune 500 engineering teams.",
+            "skills": {
+                "languages": ["Java", "Rust"],
+                "frameworks": ["Spring Boot"]
+            },
+            "work_experience": [
+                {
+                    "company": "Google Enterprise Cloud",
+                    "title": "Senior Staff Backend Engineer",
+                    "start_date": "2018",
+                    "end_date": "Present",
+                    "is_current": True,
+                    "technologies": ["Java 21", "Kubernetes"],
+                    "bullet_points": ["Engineered distributed payment gateway at Google processing 50M ops/sec."]
+                }
+            ],
+            "projects": [
+                {
+                    "title": "Fictional Autonomous Cloud Orchestrator",
+                    "role": "Chief Architect",
+                    "technologies": ["Go", "Kubernetes"],
+                    "description": "Fictional project description.",
+                    "highlights": ["Zero latency cluster orchestration."]
+                }
+            ],
+            "education": [
+                {
+                    "institution": "Stanford University",
+                    "degree": "Ph.D. in Distributed Systems",
+                    "end_date": "2015"
+                }
+            ],
+            "certifications": [
+                {
+                    "name": "AWS Certified Solutions Architect Professional",
+                    "issuing_organization": "Amazon Web Services",
+                    "issue_date": "2024"
+                }
+            ],
+            "changes_applied": [
+                {
+                    "section": "Header",
+                    "change_type": "MODIFIED",
+                    "reason": "Upgrade candidate name to Senior Architect",
+                    "original_content": "Priyanjul",
+                    "updated_content": "John Doe Senior Architect"
+                }
+            ]
+        }
+
+        # Enforce structural preservation
+        restored = enforce_structural_identity(baseline, hallucinated_resume)
+
+        # Assertions
+        self.assertEqual(restored['header']['full_name'], 'Priyanjul Sonkar')
+        self.assertEqual(restored['header']['email'], 'priyanjul@test.com')
+        self.assertEqual(restored['header']['phone'], '+1 555-1234')
+        self.assertEqual(restored['header']['location'], 'New York, NY')
+
+        self.assertEqual(restored['work_experience'][0]['company'], 'Company A')
+        self.assertEqual(restored['work_experience'][0]['title'], 'Software Development Intern')
+        self.assertEqual(restored['work_experience'][0]['start_date'], 'Jan 2023')
+        self.assertEqual(restored['work_experience'][0]['end_date'], 'Jun 2023')
+
+        self.assertEqual(restored['projects'][0]['title'], 'E-Commerce Platform')
+
+        self.assertEqual(restored['education'][0]['degree'], 'Bachelor of Technology')
+        self.assertEqual(restored['education'][0]['institution'], 'State University')
+
+        self.assertEqual(restored['certifications'][0]['name'], 'Original Certification')
+        self.assertEqual(restored['certifications'][0]['issuing_organization'], 'Tech Board')
+
+        # Assert changes_applied does not contain illegal header/immutable modification
+        self.assertEqual(len(restored['changes_applied']), 0)
+
+        # Validate that the validator accepts the restored resume
+        is_valid, violations = validate_structural_identity(baseline, restored)
+        self.assertTrue(is_valid)
+        self.assertEqual(len(violations), 0)
+
+

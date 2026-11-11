@@ -41,7 +41,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    refreshUser();
+    let ignore = false;
+    const initAuth = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        if (!ignore) {
+          setUser(null);
+          setLoading(false);
+        }
+        return;
+      }
+      try {
+        const userData = await api.get<User>('/api/auth/me/');
+        if (!ignore) {
+          setUser(userData);
+          localStorage.setItem('user_data', JSON.stringify(userData));
+        }
+      } catch {
+        if (!ignore) {
+          setUser(null);
+          api.clearTokens();
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false);
+        }
+      }
+    };
+    initAuth();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const login = async (username: string, password: string) => {
