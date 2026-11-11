@@ -335,15 +335,6 @@ export default function StructuredResumeView({
                         {exp.location ? `${exp.location} | ` : ''}{exp.start_date} &ndash; {exp.end_date || 'Present'}
                       </div>
                     </div>
-                    {/* {exp.technologies && exp.technologies.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {exp.technologies.map((t, tIdx) => (
-                          <span key={tIdx} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                    )} */}
                     <ul className="space-y-1 pl-4 list-disc text-xs text-slate-300">
                       {exp.bullet_points.map((b, bIdx) => (
                         <li key={bIdx} className={`leading-relaxed rounded ${getHighlightClass(b)}`}>

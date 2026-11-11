@@ -83,9 +83,7 @@ class GeminiProvider(BaseLLMProvider):
         and parses into a dictionary (validated by Pydantic schema if provided).
         """
         if not self.api_key:
-            # Fallback mock mode if no API key is supplied yet, so local tests and UI work without crashing
-            logger.warning("GEMINI_API_KEY not configured. Generating fallback mock response.")
-            return self._generate_fallback_mock(prompt, schema)
+            raise LLMAuthenticationError("Gemini API key is not configured. Please set GEMINI_API_KEY in your backend environment variables.")
 
         self._init_client()
         import google.generativeai as genai
@@ -143,8 +141,8 @@ class GeminiProvider(BaseLLMProvider):
                     )
                     continue
                 elif 'quota' in err_str or 'rate' in err_str or '429' in err_str or 'exhausted' in err_str:
-                    logger.warning(f"Gemini API rate limit or free tier quota limit reached: {str(e)}. Utilizing intelligent fallback provider to maintain zero-downtime operation.")
-                    return self._generate_fallback_mock(prompt, schema)
+                    logger.error(f"Gemini API rate limit or free tier quota limit reached: {str(e)}")
+                    raise LLMRateLimitError(f"Gemini API rate limit or free tier quota limit reached: {str(e)}")
                 elif 'auth' in err_str or 'api_key' in err_str or 'permission' in err_str:
                     raise LLMAuthenticationError(f"Gemini API authentication failed: {str(e)}")
                 else:
@@ -161,7 +159,7 @@ class GeminiProvider(BaseLLMProvider):
         temperature: float = 0.3
     ) -> str:
         if not self.api_key:
-            return "Note: Gemini API Key not set. This is a local development placeholder text."
+            raise LLMAuthenticationError("Gemini API key is not configured. Please set GEMINI_API_KEY in your backend environment variables.")
 
         self._init_client()
         import google.generativeai as genai
@@ -187,7 +185,8 @@ class GeminiProvider(BaseLLMProvider):
                     )
                     continue
                 elif 'quota' in err_str or 'rate' in err_str or '429' in err_str or 'exhausted' in err_str:
-                    return "AI generation completed using verified fallback provider."
+                    logger.error(f"Gemini API rate limit or free tier quota limit reached: {str(e)}")
+                    raise LLMRateLimitError(f"Gemini API rate limit or free tier quota limit reached: {str(e)}")
                 time.sleep(attempt * 2)
 
         return ""

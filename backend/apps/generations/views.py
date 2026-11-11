@@ -17,6 +17,7 @@ from apps.history.models import ResumeMatchReport, FinalizedResumeHistory
 from apps.pdf_engine.ats_generator import generate_ats_pdf, normalize_filename
 
 from services.llm.factory import get_llm_provider
+from services.llm.base import LLMRateLimitError, LLMAuthenticationError
 from services.matching.score_calculator import calculate_jd_match_scores
 from services.matching.jd_extractor import extract_dynamic_jd_analysis
 from services.matching.requirement_mapper import build_requirement_evidence_mapping
@@ -150,6 +151,18 @@ class AnalyzeAndGenerateView(APIView):
                 )
                 jd_obj.parsed_analysis = jd_analysis
                 jd_obj.save()
+            except LLMRateLimitError as rle:
+                logger.error(f"Gemini quota/rate limit during JD analysis: {rle}")
+                return Response(
+                    {'error': str(rle)},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS
+                )
+            except LLMAuthenticationError as ae:
+                logger.error(f"Gemini auth error during JD analysis: {ae}")
+                return Response(
+                    {'error': str(ae)},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
             except Exception as e:
                 logger.error(f"Error during JD analysis: {str(e)}")
                 # Use dynamic extractor fallback from actual JD text
@@ -181,6 +194,18 @@ class AnalyzeAndGenerateView(APIView):
                 prompt=gen_prompt,
                 system_instruction=get_generation_system_instruction(),
                 schema=StructuredResumeSchema
+            )
+        except LLMRateLimitError as rle:
+            logger.error(f"Gemini quota/rate limit during resume generation: {rle}")
+            return Response(
+                {'error': str(rle)},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+        except LLMAuthenticationError as ae:
+            logger.error(f"Gemini auth error: {ae}")
+            return Response(
+                {'error': str(ae)},
+                status=status.HTTP_401_UNAUTHORIZED
             )
         except Exception as e:
             logger.error(f"Resume generation LLM failure: {str(e)}")
@@ -343,6 +368,18 @@ class ResumeReviseView(APIView):
                 system_instruction=get_revision_system_instruction(),
                 schema=StructuredResumeSchema
             )
+        except LLMRateLimitError as rle:
+            logger.error(f"Gemini quota/rate limit during revision: {rle}")
+            return Response(
+                {'error': str(rle)},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+        except LLMAuthenticationError as ae:
+            logger.error(f"Gemini auth error during revision: {ae}")
+            return Response(
+                {'error': str(ae)},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         except Exception as e:
             logger.error(f"Error during revision LLM call: {str(e)}")
             return Response({'error': f"Revision failed: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -471,6 +508,18 @@ class ResumeApproveView(APIView):
                         prompt=rev_prompt,
                         system_instruction=get_revision_system_instruction(),
                         schema=StructuredResumeSchema
+                    )
+                except LLMRateLimitError as rle:
+                    logger.error(f"Gemini quota/rate limit during approval note: {rle}")
+                    return Response(
+                        {'error': str(rle)},
+                        status=status.HTTP_429_TOO_MANY_REQUESTS
+                    )
+                except LLMAuthenticationError as ae:
+                    logger.error(f"Gemini auth error during approval note: {ae}")
+                    return Response(
+                        {'error': str(ae)},
+                        status=status.HTTP_401_UNAUTHORIZED
                     )
                 except Exception as e:
                     logger.error(f"Failed to process final approval comment: {e}")

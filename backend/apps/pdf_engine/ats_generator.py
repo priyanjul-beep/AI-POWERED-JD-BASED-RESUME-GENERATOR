@@ -249,13 +249,12 @@ def _build_pdf_stream(
             story.append(Paragraph(to_reportlab_xml(", ".join(skills)), body_style))
         story.append(Spacer(1, spacer_large - 1))
 
-    # 4. WORK EXPERIENCE (Render ALL work experiences and ALL bullet points + technologies)
+    # 4. WORK EXPERIENCE (Render ALL work experiences and ALL bullet points without exp technologies)
     work_exps = resume_data.get('work_experience') or resume_data.get('experiences') or resume_data.get('experience', [])
     if work_exps:
         add_section_header("Work Experience")
         for exp in work_exps:
-            techs = ", ".join(exp.get('technologies', []))
-            title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}" + (f" | <i>{techs}</i>" if techs else "")
+            title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}"
             date_text = f"{exp.get('start_date', '')} &ndash; {exp.get('end_date', 'Present')}"
             loc_text = exp.get('location', '')
             right_meta = f"{loc_text} | {date_text}" if loc_text else date_text
