@@ -18,12 +18,14 @@ export default function ApprovalModal({
 }: ApprovalModalProps) {
   const [pageFormat, setPageFormat] = useState<'ONE_PAGE' | 'TWO_PAGE'>('ONE_PAGE');
   const [filename, setFilename] = useState(defaultFilename);
+  const [prevDefaultFilename, setPrevDefaultFilename] = useState(defaultFilename);
   const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  React.useEffect(() => {
+  if (prevDefaultFilename !== defaultFilename) {
+    setPrevDefaultFilename(defaultFilename);
     setFilename(defaultFilename);
-  }, [defaultFilename]);
+  }
 
   if (!isOpen) return null;
 

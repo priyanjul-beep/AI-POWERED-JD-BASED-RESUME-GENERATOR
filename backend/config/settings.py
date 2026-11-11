@@ -14,7 +14,15 @@ load_dotenv(BASE_DIR / '.env', override=True)
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-ai-resume-generator-secret-key-change-in-production-2026')
 DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if host.strip()]
+raw_allowed_hosts = os.getenv('ALLOWED_HOSTS', '*')
+if raw_allowed_hosts.strip() == '*':
+    ALLOWED_HOSTS = ['*']
+else:
+    parsed_hosts = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()]
+    for fallback in ['localhost', '127.0.0.1', '[::1]', '.vercel.app', '.now.sh']:
+        if fallback not in parsed_hosts:
+            parsed_hosts.append(fallback)
+    ALLOWED_HOSTS = parsed_hosts
 
 # Application definition
 INSTALLED_APPS = [
@@ -118,7 +126,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
@@ -139,13 +146,112 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = DEBUG
-CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://127.0.0.1:3000').split(',')
-    if origin.strip()
+# CORS Configuration - Strictly restrict access to Localhost & Vercel deployments
+# Only allow all origins if explicitly opted in via env (default: False)
+CORS_ALLOW_ALL_ORIGINS = os.getenv('CORS_ALLOW_ALL_ORIGINS', 'False').lower() in ('true', '1', 'yes')
+
+def _clean_origin(url: str) -> str:
+    url = url.strip().rstrip('/')
+    if url and not url.startswith('http://') and not url.startswith('https://'):
+        url = f'https://{url}'
+    return url
+
+# Base allowed origins (Localhost ports and known frontends)
+_default_origins = [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
+
+# Explicit allowed origins from CORS_ALLOWED_ORIGINS env
+raw_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
+env_cors_origins = [
+    _clean_origin(orig) for orig in raw_cors.split(',')
+    if orig.strip() and not orig.strip().startswith('*.')
+]
+
+# Support FRONTEND_URL and VERCEL_URL if provided
+extra_origins = []
+frontend_url = os.getenv('FRONTEND_URL', '').strip()
+if frontend_url:
+    extra_origins.append(_clean_origin(frontend_url))
+
+vercel_url = os.getenv('VERCEL_URL', '').strip()
+if vercel_url:
+    extra_origins.append(_clean_origin(vercel_url))
+
+CORS_ALLOWED_ORIGINS = list(dict.fromkeys(_default_origins + env_cors_origins + extra_origins))
+
+# Regex patterns to dynamically match ANY Vercel deployment URL (production, preview branches, PR previews)
+# and localhost on any port
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+    r"^https:\/\/.*\.now\.sh$",
+    r"^http:\/\/localhost(:\d+)?$",
+    r"^http:\/\/127\.0\.0\.1(:\d+)?$",
+]
+
 CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'HEAD',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'access-control-request-headers',
+    'access-control-request-method',
+    'authorization',
+    'cache-control',
+    'content-disposition',
+    'content-type',
+    'dnt',
+    'if-modified-since',
+    'origin',
+    'pragma',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'content-disposition',
+    'content-length',
+    'accept-ranges',
+]
+
+CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
+
+# CSRF Trusted Origins for HTTPS deployments & Vercel
+raw_csrf = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+custom_csrf = [_clean_origin(c) for c in raw_csrf.split(',') if c.strip()]
+CSRF_TRUSTED_ORIGINS = list(set(
+    custom_csrf + [
+        'https://*.vercel.app',
+        'https://*.now.sh',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:8000',
+        'http://127.0.0.1:8000',
+    ] + extra_origins
+))
 
 # LLM & Gemini Configuration (Provider-Independent Backend Service)
 LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini')
