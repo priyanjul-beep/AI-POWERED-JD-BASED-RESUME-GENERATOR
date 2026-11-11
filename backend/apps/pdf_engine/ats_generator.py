@@ -160,7 +160,7 @@ def _build_pdf_stream(
     proj_title_style = ParagraphStyle(
         'ResumeProjTitle',
         parent=styles['Normal'],
-        fontName='Helvetica',
+        fontName='Helvetica-Bold',
         fontSize=body_size + 0.3,
         leading=body_leading,
         textColor=HEADING_COLOR,
@@ -293,7 +293,7 @@ def _build_pdf_stream(
             story.append(Spacer(1, spacer_small))
         story.append(Spacer(1, spacer_large - 1))
 
-    # 5. KEY PROJECTS (Render ALL projects, description, ALL highlights + Clickable Links; full width, no role_text)
+    # 5. KEY PROJECTS (Format: Project Title | Technologies | GitHub • Live Demo)
     projects = resume_data.get('projects') or resume_data.get('key_projects', [])
     if projects:
         add_section_header("Key Projects")
@@ -305,16 +305,23 @@ def _build_pdf_stream(
             links_part = []
             if github_or_url:
                 safe_git = github_or_url.replace('"', '&quot;')
-                links_part.append(f'<font color="#2563EB"><u><a href="{safe_git}">Project Link</a></u></font>')
+                links_part.append(f'<a href="{safe_git}">GitHub</a>')
             if demo_url:
                 safe_demo = demo_url.replace('"', '&quot;')
-                links_part.append(f'<font color="#059669"><u><a href="{safe_demo}">Live Demo</a></u></font>')
+                links_part.append(f'<a href="{safe_demo}">Live Demo</a>')
 
-            links_str = f"&nbsp; [{' | '.join(links_part)}]" if links_part else ""
-            techs = ", ".join(proj.get('technologies', []))
-            tech_str = f'&nbsp; | <font color="#475569"><i>{techs}</i></font>' if techs else ""
-            title_text = f"<b>{proj_title}</b>{links_str}{tech_str}"
+            links_str = f'<font color="#2563EB">{" &bull; ".join(links_part)}</font>' if links_part else ""
+            techs = ", ".join(str(t).strip() for t in (proj.get('technologies') or []) if str(t).strip())
 
+            header_parts = []
+            if proj_title:
+                header_parts.append(proj_title)
+            if techs:
+                header_parts.append(techs)
+            if links_str:
+                header_parts.append(links_str)
+
+            title_text = " | ".join(header_parts)
             story.append(Paragraph(to_reportlab_xml(title_text), proj_title_style))
 
             if proj.get('description'):
