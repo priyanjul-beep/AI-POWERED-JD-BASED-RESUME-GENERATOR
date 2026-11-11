@@ -29,7 +29,7 @@ def to_reportlab_xml(text: Any) -> str:
         text = str(text)
     
     # Escape standalone '&' that aren't already xml entities
-    text = re.sub(r'&(?!(amp|bull|ndash|mdash|lt|gt|quot|apos|#\d+);)', '&amp;', text)
+    text = re.sub(r'&(?!(amp|bull|ndash|mdash|nbsp|lt|gt|quot|apos|#\d+);)', '&amp;', text)
     # Convert **bold** and __bold__ to <b>bold</b>
     text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
     text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
@@ -72,9 +72,10 @@ def _build_pdf_stream(
     """
     buf = io.BytesIO()
 
-    # Dynamic margins
+    # Dynamic margins & available width
     horiz_margin = max(0.28, 0.40 * scale) * inch
     vert_margin = max(0.25, 0.35 * scale) * inch if is_one_page else 0.55 * inch
+    content_width = letter[0] - (2 * horiz_margin)
 
     doc = SimpleDocTemplate(
         buf,
@@ -156,12 +157,23 @@ def _build_pdf_stream(
         textColor=HEADING_COLOR
     )
 
+    proj_title_style = ParagraphStyle(
+        'ResumeProjTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=body_size + 0.3,
+        leading=body_leading,
+        textColor=HEADING_COLOR,
+        spaceAfter=1
+    )
+
     item_sub_style = ParagraphStyle(
         'ResumeItemSub',
         parent=styles['Normal'],
         fontName='Helvetica-Oblique',
         fontSize=max(5.8, body_size - 0.4),
         leading=body_leading,
+        alignment=TA_RIGHT,
         textColor=MUTED_COLOR
     )
 
@@ -254,14 +266,14 @@ def _build_pdf_stream(
     if work_exps:
         add_section_header("Work Experience")
         for exp in work_exps:
-            title_text = f"<b>{exp.get('title', '')}</b> &mdash; {exp.get('company', '')}"
+            title_text = f"<b>{exp.get('company', '')}</b> &mdash; {exp.get('title', '')}"
             date_text = f"{exp.get('start_date', '')} &ndash; {exp.get('end_date', 'Present')}"
             loc_text = exp.get('location', '')
             right_meta = f"{loc_text} | {date_text}" if loc_text else date_text
 
             header_table = Table(
                 [[Paragraph(to_reportlab_xml(title_text), item_title_style), Paragraph(to_reportlab_xml(right_meta), item_sub_style)]],
-                colWidths=[5.4 * inch, 2.2 * inch]
+                colWidths=[content_width * 0.68, content_width * 0.32]
             )
             header_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'LEFT'),
@@ -281,40 +293,29 @@ def _build_pdf_stream(
             story.append(Spacer(1, spacer_small))
         story.append(Spacer(1, spacer_large - 1))
 
-    # 5. KEY PROJECTS (Render ALL projects, description, ALL highlights + Clickable Links)
+    # 5. KEY PROJECTS (Render ALL projects, description, ALL highlights + Clickable Links; full width, no role_text)
     projects = resume_data.get('projects') or resume_data.get('key_projects', [])
     if projects:
         add_section_header("Key Projects")
         for proj in projects:
-            proj_title = proj.get('title', '')
-            github_or_url = proj.get('github_url') or proj.get('url')
-            demo_url = proj.get('demo_url')
-            
+            proj_title = (proj.get('title') or '').strip()
+            github_or_url = (proj.get('github_url') or proj.get('url') or '').strip()
+            demo_url = (proj.get('demo_url') or '').strip()
+
             links_part = []
             if github_or_url:
-                links_part.append(f'<font color="#2563EB"><u><a href="{github_or_url}">Project Link</a></u></font>')
+                safe_git = github_or_url.replace('"', '&quot;')
+                links_part.append(f'<font color="#2563EB"><u><a href="{safe_git}">Project Link</a></u></font>')
             if demo_url:
-                links_part.append(f'<font color="#059669"><u><a href="{demo_url}">Live Demo</a></u></font>')
-            
-            links_str = f" [{' | '.join(links_part)}]" if links_part else ""
-            techs = ", ".join(proj.get('technologies', []))
-            title_text = f"<b>{proj_title}</b>{links_str}" + (f" | <i>{techs}</i>" if techs else "")
-            role_text = proj.get('role', '')
+                safe_demo = demo_url.replace('"', '&quot;')
+                links_part.append(f'<font color="#059669"><u><a href="{safe_demo}">Live Demo</a></u></font>')
 
-            header_table = Table(
-                [[Paragraph(to_reportlab_xml(title_text), item_title_style), Paragraph(to_reportlab_xml(role_text), item_sub_style)]],
-                colWidths=[5.6 * inch, 2.0 * inch]
-            )
-            header_table.setStyle(TableStyle([
-                ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                ('LEFTPADDING', (0, 0), (-1, -1), 0),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-                ('TOPPADDING', (0, 0), (-1, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
-            ]))
-            story.append(header_table)
+            links_str = f"&nbsp; [{' | '.join(links_part)}]" if links_part else ""
+            techs = ", ".join(proj.get('technologies', []))
+            tech_str = f'&nbsp; | <font color="#475569"><i>{techs}</i></font>' if techs else ""
+            title_text = f"<b>{proj_title}</b>{links_str}{tech_str}"
+
+            story.append(Paragraph(to_reportlab_xml(title_text), proj_title_style))
 
             if proj.get('description'):
                 story.append(Paragraph(to_reportlab_xml(proj['description']), body_style))
@@ -342,7 +343,7 @@ def _build_pdf_stream(
 
             edu_table = Table(
                 [[Paragraph(to_reportlab_xml(left_text), body_style), Paragraph(to_reportlab_xml(date_text), item_sub_style)]],
-                colWidths=[5.8 * inch, 1.8 * inch]
+                colWidths=[content_width * 0.78, content_width * 0.22]
             )
             edu_table.setStyle(TableStyle([
                 ('ALIGN', (0, 0), (0, 0), 'LEFT'),
