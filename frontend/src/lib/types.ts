@@ -240,6 +240,7 @@ export interface ResumeGeneration {
   updated_at: string;
   versions: ResumeVersion[];
   current_version?: ResumeVersion;
+  final_filename?: string | null;
 }
 
 export interface FinalizedResumeHistory {

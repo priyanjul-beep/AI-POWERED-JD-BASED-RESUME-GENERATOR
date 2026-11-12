@@ -75,6 +75,9 @@ export default function ResumeReviewPage() {
       if (data.status === 'APPROVED') {
         setIsFinalized(true);
       }
+      if (data.final_filename) {
+        setFinalFilename(data.final_filename);
+      }
     } catch (err: unknown) {
       console.error(err);
     } finally {
@@ -100,6 +103,9 @@ export default function ResumeReviewPage() {
 
           if (data.status === 'APPROVED') {
             setIsFinalized(true);
+          }
+          if (data.final_filename) {
+            setFinalFilename(data.final_filename);
           }
         })
         .catch((err: unknown) => {
@@ -224,20 +230,28 @@ export default function ResumeReviewPage() {
   // Authenticated PDF Download via Blob URL with fallback to tokenized direct URL (supports tailored & general modes)
   const handleDownloadPdf = async () => {
     setIsDownloadingPdf(true);
-    try {
-      const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
-        ? currentVersion.tailored_resume_data
-        : currentVersion?.structured_resume_data;
+    const activeResumeData = (resumeMode === 'tailored' && currentVersion?.tailored_resume_data)
+      ? currentVersion.tailored_resume_data
+      : currentVersion?.structured_resume_data;
 
+    const rawCustomFilename = (finalFilename || generation?.final_filename || '').trim();
+    const fallbackFilename = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
+    const customFilename = rawCustomFilename
+      ? (rawCustomFilename.toLowerCase().endsWith('.pdf') ? rawCustomFilename : `${rawCustomFilename}.pdf`)
+      : fallbackFilename;
+
+    try {
       const blob = await api.post<Blob>(
         `/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}`,
-        { resume_data: activeResumeData }
+        {
+          resume_data: activeResumeData,
+          custom_filename: customFilename,
+        }
       );
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
-      link.download = downloadName;
+      link.download = customFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -245,11 +259,10 @@ export default function ResumeReviewPage() {
     } catch (err: unknown) {
       console.warn('Blob download failed, falling back to tokenized URL:', err);
       const token = api.getAccessToken();
-      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}${token ? `&token=${token}` : ''}`;
+      const directUrl = `${api.getBaseUrl()}/api/resume-generations/${generationId}/download/?mode=${resumeMode}&version=${selectedVersionNum}&custom_filename=${encodeURIComponent(customFilename)}${token ? `&token=${token}` : ''}`;
       const fallbackLink = document.createElement('a');
       fallbackLink.href = directUrl;
-      const downloadName = `${(generation?.target_company || 'company').toLowerCase()}_${(generation?.target_role || 'role').toLowerCase()}_${resumeMode}_v${selectedVersionNum}.pdf`;
-      fallbackLink.download = downloadName;
+      fallbackLink.download = customFilename;
       document.body.appendChild(fallbackLink);
       fallbackLink.click();
       document.body.removeChild(fallbackLink);
@@ -471,7 +484,7 @@ export default function ResumeReviewPage() {
               </div>
               <h3 className="text-xl font-extrabold text-white">Your ATS-Optimized PDF is Ready!</h3>
               <p className="text-xs text-slate-300">
-                Saved in your Resume History under: <span className="font-mono text-emerald-300">{finalFilename || defaultFilename}</span>
+                Saved in your Resume History under: <span className="font-mono text-emerald-300">{finalFilename || generation.final_filename || defaultFilename}</span>
               </p>
             </div>
 

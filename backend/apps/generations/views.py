@@ -1,4 +1,5 @@
 import os
+import re
 import io
 import logging
 from django.conf import settings
@@ -44,6 +45,17 @@ from .serializers import (
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_pdf_filename(raw_name: str) -> str:
+    """Sanitize a user-supplied filename for safe storage and Content-Disposition headers."""
+    if not raw_name:
+        return ''
+    cleaned = os.path.basename(str(raw_name).strip())
+    cleaned = re.sub(r'[\\/"\'\r\n\t;]+', '', cleaned).strip()
+    if not cleaned:
+        return ''
+    return cleaned if cleaned.lower().endswith('.pdf') else f"{cleaned}.pdf"
 
 
 class QueryParamOrHeaderJWTAuthentication(JWTAuthentication):
@@ -588,8 +600,9 @@ class ResumeApproveView(APIView):
             # Candidate name for file normalization
             candidate_name = final_resume_data.get('header', {}).get('full_name') or request.user.get_full_name() or request.user.username
 
-            if custom_filename:
-                filename = custom_filename if custom_filename.endswith('.pdf') else f"{custom_filename}.pdf"
+            sanitized_custom = _sanitize_pdf_filename(custom_filename)
+            if sanitized_custom:
+                filename = sanitized_custom
             else:
                 filename = normalize_filename(
                     candidate_name=candidate_name,
@@ -750,20 +763,34 @@ class ResumeDownloadView(APIView):
 
         pdf_bytes = generate_ats_pdf(resume_content, page_format='ONE_PAGE')
 
-        candidate_name = (
-            resume_content.get('header', {}).get('full_name')
-            or request.user.get_full_name()
-            or request.user.username
+        req_custom_filename = (
+            (request.data.get('custom_filename') if isinstance(getattr(request, 'data', None), dict) else None)
+            or request.query_params.get('custom_filename')
+            or request.GET.get('custom_filename')
+            or ''
         )
-        norm_filename = normalize_filename(
-            candidate_name=candidate_name,
-            company_name=generation.target_company or "company",
-            target_role=f"{generation.target_role}_{view_mode}",
-            version_number=current_version.version_number
-        )
+        download_filename = _sanitize_pdf_filename(req_custom_filename)
+
+        if not download_filename:
+            history_entry = generation.history_entries.order_by('-created_at').first()
+            if history_entry and history_entry.filename:
+                download_filename = _sanitize_pdf_filename(history_entry.filename)
+
+        if not download_filename:
+            candidate_name = (
+                resume_content.get('header', {}).get('full_name')
+                or request.user.get_full_name()
+                or request.user.username
+            )
+            download_filename = normalize_filename(
+                candidate_name=candidate_name,
+                company_name=generation.target_company or "company",
+                target_role=f"{generation.target_role}_{view_mode}",
+                version_number=current_version.version_number
+            )
 
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = f'attachment; filename="{norm_filename}"'
+        response['Content-Disposition'] = f'attachment; filename="{download_filename}"'
         return response
 
     def get(self, request, pk):

@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth';
-import { Lock, User, Mail, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { User, Mail, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import PasswordInput from '@/components/ui/PasswordInput';
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -101,19 +102,16 @@ export default function RegisterPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-300">Password</label>
-            <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-indigo-500 transition-colors"
-                placeholder="Password"
-              />
-            </div>
+            <label htmlFor="register-password" className="text-xs font-semibold text-slate-300">Password</label>
+            <PasswordInput
+              id="register-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              autoComplete="new-password"
+              placeholder="Password"
+            />
           </div>
 
           <button

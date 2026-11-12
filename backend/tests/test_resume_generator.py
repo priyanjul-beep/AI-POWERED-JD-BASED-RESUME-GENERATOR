@@ -225,10 +225,34 @@ class ResumeGeneratorSystemTests(TestCase):
         self.assertEqual(history_response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(history_response.data), 1)
 
-        # 5. Check PDF download
+        # 4b. Verify detail serializer exposes final_filename
+        detail_response = self.client.get(f'/api/resume-generations/{gen_id}/')
+        self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail_response.data.get('final_filename'), 'priyanjul_mastercard_java_dev.pdf')
+
+        # 5. Check PDF download (GET uses finalized filename, POST honors custom_filename)
         pdf_response = self.client.get(f'/api/resume-generations/{gen_id}/download/')
         self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
         self.assertEqual(pdf_response['Content-Type'], 'application/pdf')
+        self.assertEqual(
+            pdf_response['Content-Disposition'],
+            'attachment; filename="priyanjul_mastercard_java_dev.pdf"'
+        )
+
+        custom_post_download = self.client.post(
+            f'/api/resume-generations/{gen_id}/download/?mode=tailored&version=2',
+            {
+                'resume_data': approve_response.data['final_resume'],
+                'custom_filename': 'my_custom_resume',
+            },
+            format='json'
+        )
+        self.assertEqual(custom_post_download.status_code, status.HTTP_200_OK)
+        self.assertEqual(custom_post_download['Content-Type'], 'application/pdf')
+        self.assertEqual(
+            custom_post_download['Content-Disposition'],
+            'attachment; filename="my_custom_resume.pdf"'
+        )
 
     def test_user_data_isolation(self):
         # Create second user

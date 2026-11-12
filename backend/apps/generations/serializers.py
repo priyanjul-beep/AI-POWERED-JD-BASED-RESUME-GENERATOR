@@ -43,6 +43,7 @@ class ResumeVersionSerializer(serializers.ModelSerializer):
 class ResumeGenerationSerializer(serializers.ModelSerializer):
     versions = ResumeVersionSerializer(many=True, read_only=True)
     current_version = serializers.SerializerMethodField()
+    final_filename = serializers.SerializerMethodField()
 
     class Meta:
         model = ResumeGeneration
@@ -50,7 +51,7 @@ class ResumeGenerationSerializer(serializers.ModelSerializer):
             'id', 'target_role', 'target_company', 'experience_level',
             'additional_experience_details', 'status', 'current_version_number',
             'created_at', 'updated_at', 'versions', 'current_version',
-            'job_description', 'reference_resume'
+            'final_filename', 'job_description', 'reference_resume'
         )
         read_only_fields = ('id', 'created_at', 'updated_at')
 
@@ -59,6 +60,10 @@ class ResumeGenerationSerializer(serializers.ModelSerializer):
         if ver:
             return ResumeVersionSerializer(ver).data
         return None
+
+    def get_final_filename(self, obj):
+        entry = obj.history_entries.order_by('-created_at').values_list('filename', flat=True).first()
+        return entry or None
 
 
 class AnalyzeAndGenerateRequestSerializer(serializers.Serializer):
